@@ -1,0 +1,120 @@
+.
+├── .cursor
+│   └── rules
+│       ├── cursorrules-backend.mdc
+│       ├── cursorrules-frontend.mdc
+│       └── cursorrules-mobile.mdc
+├── .gitignore
+├── EXAMPLES.md
+├── NAMING-CONVENTION.md
+├── README.md
+├── backend
+│   ├── .env
+│   ├── .env.example
+│   ├── .gitignore
+│   ├── Dockerfile
+│   ├── Dockerfile.prod
+│   ├── database
+│   │   ├── reset.ts
+│   │   ├── schema.sql
+│   │   ├── seed-runner.ts
+│   │   ├── seed.sql
+│   │   └── setup.ts
+│   ├── package-lock.json
+│   ├── package.json
+│   ├── src
+│   │   ├── db.ts
+│   │   ├── domain
+│   │   │   ├── audit
+│   │   │   ├── auth
+│   │   │   ├── file
+│   │   │   ├── permission
+│   │   │   ├── role
+│   │   │   └── user
+│   │   ├── index.ts
+│   │   ├── presentation
+│   │   │   ├── context.ts
+│   │   │   ├── routers
+│   │   │   └── trpc.ts
+│   │   └── shared
+│   │       ├── config
+│   │       ├── errors
+│   │       ├── errors.ts
+│   │       ├── middleware
+│   │       ├── schemas.ts
+│   │       ├── security
+│   │       └── service
+│   └── tsconfig.json
+├── docker-compose.yml
+├── frontend
+│   ├── .env.example
+│   ├── Dockerfile
+│   ├── Dockerfile.prod
+│   ├── components.json
+│   ├── index.html
+│   ├── nginx.conf
+│   ├── package-lock.json
+│   ├── package.json
+│   ├── postcss.config.js
+│   ├── src
+│   │   ├── App.tsx
+│   │   ├── application
+│   │   │   └── hooks
+│   │   ├── infrastructure
+│   │   │   ├── api
+│   │   │   ├── config
+│   │   │   └── storage
+│   │   ├── main.tsx
+│   │   ├── presentation
+│   │   │   ├── components
+│   │   │   ├── pages
+│   │   │   ├── routes
+│   │   │   └── styles
+│   │   └── shared
+│   │       └── utils
+│   ├── tailwind.config.js
+│   ├── tsconfig.json
+│   ├── tsconfig.node.json
+│   └── vite.config.ts
+├── mobile
+│   ├── .env.example
+│   ├── .gitignore
+│   ├── README.md
+│   ├── app.json
+│   ├── assets
+│   │   ├── adaptive-icon.png
+│   │   ├── favicon.png
+│   │   ├── icon.png
+│   │   └── splash-icon.png
+│   ├── babel.config.js
+│   ├── index.ts
+│   ├── metro.config.js
+│   ├── package-lock.json
+│   ├── package.json
+│   ├── src
+│   │   ├── App.tsx
+│   │   ├── application
+│   │   │   └── hooks
+│   │   ├── infrastructure
+│   │   │   ├── api
+│   │   │   └── storage
+│   │   └── presentation
+│   │       ├── navigation
+│   │       └── screens
+│   └── tsconfig.json
+├── shared
+│   ├── package-lock.json
+│   ├── package.json
+│   ├── src
+│   │   ├── index.ts
+│   │   └── schemas
+│   │       ├── auth.schemas.ts
+│   │       ├── file.schemas.ts
+│   │       ├── index.ts
+│   │       ├── permission.schemas.ts
+│   │       ├── role.schemas.ts
+│   │       └── user.schemas.ts
+│   └── tsconfig.json
+└── structure.txt
+
+50 directories, 68 files

@@ -1,0 +1,13 @@
+{
+  "name": "arena",
+  "private": true,
+  "packageManager": "pnpm@9.5.0",
+  "scripts": {
+    "dev:backend": "pnpm --filter ./backend dev",
+    "dev:frontend": "pnpm --filter ./frontend dev",
+    "dev:mobile": "pnpm --filter ./mobile start",
+    "build": "pnpm --filter ./backend build && pnpm --filter ./frontend build",
+    "typecheck": "pnpm --filter \"...\" typecheck",
+    "test": "pnpm --filter \"...\" test"
+  }
+}
