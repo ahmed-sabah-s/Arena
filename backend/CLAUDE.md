@@ -83,6 +83,29 @@ if (!user) {
 }
 ```
 
+## TypeScript Discipline
+
+Established in Phase 3.5. These rules are binding for all new and modified code.
+
+- **No `any` types.** Use `unknown` for genuinely unknown shapes and narrow before use. `any` opts out of type checking entirely; in a codebase where types are knowable from migrations, schemas, or other source files, `any` is almost always wrong.
+- **No `@ts-ignore` or `@ts-expect-error`** without an inline comment explaining what error is being silenced and why it can't be fixed.
+- **No unjustified `as` casts.** `as const` and post-runtime-check narrowing (e.g., `if (typeof x === 'string')` followed by use as a string) are fine. Everything else needs a one-line comment naming why the cast is required.
+
+### Accepted exceptions (with comment)
+
+- **Test mocks** that intentionally implement only the methods a test exercises: prefer `as unknown as IRepository` over `as any`, and add a one-line comment near the cast.
+- **Library boundaries** that return `any` from third-party types (e.g., `jwt.verify`'s `string | object | T`): cast at the boundary, document the cast, and never propagate `any` into application code.
+- **Generic type parameter defaults** that mean "any value": prefer `<T = unknown>`. `<T = any>` is acceptable only for ergonomic public APIs that consumers commonly call without specifying the generic (e.g., `query<MyRow>()`); the rationale must be in a comment.
+- **Overload implementation signatures** for methods with multiple typed overloads: TypeScript's standard pattern uses `any` on the implementation. The overloads themselves must be properly typed.
+
+### How to handle a JSONB column
+
+Define a discriminated union if the shape is known and varies by a sibling column. Use `unknown` if the shape is genuinely caller-narrowed. Never use `any`.
+
+### Postgres error narrowing
+
+Use the `isPgError` type guard from `shared/errors`. Replace `catch (err: any)` with `catch (err: unknown)` followed by `if (isPgError(err)) ...`. Then access `err.code` (SQLSTATE) and `err.constraint` after narrowing.
+
 ## Domain Structure
 
 Every feature is a vertical-slice folder under `src/domain/` with six files:
