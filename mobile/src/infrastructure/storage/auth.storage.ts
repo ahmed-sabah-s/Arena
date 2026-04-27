@@ -22,12 +22,12 @@ export const authStorage = {
     return await SecureStore.getItemAsync(REFRESH_TOKEN_KEY);
   },
 
-  // User data
-  async setUser(user: any) {
+  // User data — stored shape mirrors the auth response. Phase 11 narrows at consumers.
+  async setUser(user: unknown) {
     await SecureStore.setItemAsync(USER_KEY, JSON.stringify(user));
   },
 
-  async getUser(): Promise<any | null> {
+  async getUser(): Promise<unknown | null> {
     const data = await SecureStore.getItemAsync(USER_KEY);
     return data ? JSON.parse(data) : null;
   },

@@ -1,3 +1,4 @@
+import pg from 'pg';
 import { query, transaction } from '../../db.js';
 import type { CustomClient } from '../../db.js';
 import { AppError, NotFoundError } from '../../shared/errors/index.js';
@@ -20,16 +21,16 @@ import type {
 
 // Tiny helper: route a query through a transaction client when supplied,
 // or fall back to the pool. Keeps the SQL calls themselves identical.
-async function exec<T = any>(
+async function exec<T extends pg.QueryResultRow>(
   client: CustomClient | undefined,
   sql: string,
   params: Record<string, unknown>,
 ): Promise<T[]> {
   if (client) {
-    const res = await client.query<any>(sql, params);
-    return res.rows as T[];
+    const res = await client.query<T>(sql, params);
+    return res.rows;
   }
-  return query<any>(sql, params) as Promise<T[]>;
+  return query<T>(sql, params);
 }
 
 // ─── ITeamRepository ──────────────────────────────────────────────────────────

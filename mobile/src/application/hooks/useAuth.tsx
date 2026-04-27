@@ -2,8 +2,17 @@ import { useState, useEffect, createContext, useContext } from "react";
 import { trpc } from "../../infrastructure/api/trpc";
 import { authStorage } from "../../infrastructure/storage/auth.storage";
 
+// Structural minimum used by the legacy template screens. Phase 11 will replace
+// this with the typed User from @arena/shared once the auth UI is rebuilt.
+interface StoredAuthUser {
+  id?: string;
+  email?: string | null;
+  fullName?: string | null;
+  roles?: Array<{ id: string; name: string }>;
+}
+
 interface AuthContextType {
-  user: any | null;
+  user: StoredAuthUser | null;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -13,7 +22,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<any | null>(null);
+  const [user, setUser] = useState<StoredAuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   const loginMutation = trpc.auth.loginWithPassword.useMutation();
@@ -28,7 +37,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const token = await authStorage.getToken();
       if (token) {
-        const savedUser = await authStorage.getUser();
+        // Storage returns unknown; the saved shape always matches StoredAuthUser
+        // because it was written by setUser(result.user) on a successful login.
+        const savedUser = await authStorage.getUser() as StoredAuthUser | null;
         setUser(savedUser);
       }
     } catch (error) {

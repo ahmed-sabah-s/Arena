@@ -5,10 +5,11 @@ const { Pool, Client } = pg;
 
 // Named-parameter conversion helper — shared between CustomClient and CustomPool.
 // Replaces :paramName with $1, $2, ... and returns the converted query + positional values.
+// Param values are opaque to us — pg consumes them unchanged — so unknown is correct.
 function convertNamedParams(
   query: string,
-  params: Record<string, any>
-): { convertedQuery: string; values: any[] } {
+  params: Record<string, unknown>
+): { convertedQuery: string; values: unknown[] } {
   const m = new Map<string, number>();
   const convertedQuery = query.replace(
     /(?<!:):([a-zA-Z0-9_]+)/g,
@@ -27,18 +28,25 @@ function convertNamedParams(
 // Custom Client with named parameters support
 // Use :paramName in queries instead of $1, $2, $3
 class CustomClient extends Client {
+  // Forwarding constructor to pg.Client (which has many overloads). Typing this against
+  // ConstructorParameters<typeof Client> works in some TS versions but is fragile across
+  // pg type-defs revisions; the any[] forwarding is the well-trodden pattern.
   constructor(...args: any[]) {
     super(...args);
   }
 
   // Declare all overloads from pg.Client.query() so the override is structurally compatible.
   // The implementation adds named-parameter support on top of the standard behaviour.
-  // The named-params overload (Record<string, any>) is an extension not present in the parent.
+  // Generic defaults use `any` (rather than `unknown`) intentionally: this is the public API
+  // that consumers call as `client.query<MyRow>(...)` — `any` keeps the no-generic call site
+  // ergonomic while typed call sites still get full safety. Same pattern in pg's own types.
   query<T extends pg.Submittable>(queryStream: T): T;
   query<R extends any[] = any[], I = any[]>(queryConfig: pg.QueryArrayConfig<I>, values?: pg.QueryConfigValues<I>): Promise<pg.QueryResult<R>>;
   query<R extends pg.QueryResultRow = any, I = any>(queryConfig: pg.QueryConfig<I>): Promise<pg.QueryResult<R>>;
   query<R extends pg.QueryResultRow = any, I extends any[] = any[]>(queryTextOrConfig: string | pg.QueryConfig<I>, values?: pg.QueryConfigValues<I>): Promise<pg.QueryResult<R>>;
-  query<R extends pg.QueryResultRow = any>(queryText: string, namedParams: Record<string, any>): Promise<pg.QueryResult<R>>;
+  query<R extends pg.QueryResultRow = any>(queryText: string, namedParams: Record<string, unknown>): Promise<pg.QueryResult<R>>;
+  // Implementation signature must accept the union of all overloads — TypeScript's
+  // standard pattern uses `any` here. The overload signatures above are typed.
   query(queryTextOrConfig: any, params?: any): any {
     // Named params only apply when first arg is a plain string and params is a plain object
     if (
@@ -58,12 +66,13 @@ class CustomClient extends Client {
 // PostgreSQL connection pool with named parameters support
 class CustomPool extends Pool {
   // Same overload strategy as CustomClient — pg.Pool.query() has the same overload set.
-  // The named-params overload (Record<string, any>) is an extension not present in the parent.
+  // See CustomClient.query above for why the generic defaults use `any` and the
+  // implementation signature uses `any` for the params union.
   query<T extends pg.Submittable>(queryStream: T): T;
   query<R extends any[] = any[], I = any[]>(queryConfig: pg.QueryArrayConfig<I>, values?: pg.QueryConfigValues<I>): Promise<pg.QueryResult<R>>;
   query<R extends pg.QueryResultRow = any, I = any>(queryConfig: pg.QueryConfig<I>): Promise<pg.QueryResult<R>>;
   query<R extends pg.QueryResultRow = any, I extends any[] = any[]>(queryTextOrConfig: string | pg.QueryConfig<I>, values?: pg.QueryConfigValues<I>): Promise<pg.QueryResult<R>>;
-  query<R extends pg.QueryResultRow = any>(queryText: string, namedParams: Record<string, any>): Promise<pg.QueryResult<R>>;
+  query<R extends pg.QueryResultRow = any>(queryText: string, namedParams: Record<string, unknown>): Promise<pg.QueryResult<R>>;
   query(queryTextOrConfig: any, params?: any): any {
     if (
       typeof queryTextOrConfig === "string" &&
@@ -94,13 +103,18 @@ pool.on("error", (err) => {
   process.exit(-1);
 });
 
-// Helper function for queries (supports both positional and named params)
+// Helper function for queries (supports both positional and named params).
+// Generic default `T = any` matches pg's own pattern for ergonomic no-generic call sites.
 export const query = async <T extends pg.QueryResultRow = any>(
   text: string,
-  params?: Record<string, any> | any[]
+  params?: Record<string, unknown> | unknown[]
 ): Promise<T[]> => {
   const start = Date.now();
-  const res = await pool.query<T>(text, params as any);
+  // Dispatch to the right overload at runtime. TypeScript can't unify "array OR object"
+  // params into a single overload call site, so we branch and let the typed overloads resolve.
+  const res = Array.isArray(params)
+    ? await pool.query<T>(text, params)
+    : await pool.query<T>(text, params ?? {});
   const duration = Date.now() - start;
 
   if (process.env.NODE_ENV === "development") {

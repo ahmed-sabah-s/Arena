@@ -20,12 +20,14 @@ export const authStorage = {
     localStorage.removeItem('refreshToken');
   },
 
-  getUser: (): any => {
+  // Stored user is whatever shape the auth response returned. Callers narrow if they
+  // need specific fields; storage doesn't enforce a schema (Phase 9 will).
+  getUser: (): unknown => {
     const user = localStorage.getItem('user');
     return user ? JSON.parse(user) : null;
   },
 
-  setUser: (user: any): void => {
+  setUser: (user: unknown): void => {
     localStorage.setItem('user', JSON.stringify(user));
   },
 

@@ -21,7 +21,7 @@ export function HomeScreen({ navigation }: any) {
     <View style={styles.container}>
       <ScrollView style={styles.content}>
         <View style={styles.header}>
-          <Text style={styles.greeting}>Hello, {user?.name}!</Text>
+          <Text style={styles.greeting}>Hello, {user?.fullName}!</Text>
           <Text style={styles.subtitle}>Welcome to your dashboard</Text>
         </View>
 
