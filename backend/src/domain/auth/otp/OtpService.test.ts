@@ -19,9 +19,10 @@ vi.mock('../../../shared/config/platformConfig/index.js', () => ({
 }));
 
 // We use the real `transaction` but funnel through a fake client that calls our repo mock.
-// To keep tests pure, mock `transaction` to invoke the callback with a fake client.
+// `unknown` for cb args because the fake client only implements .query(), not the full
+// CustomClient interface — and rebuilding the full interface adds no test value.
 vi.mock('../../../db.js', () => ({
-  transaction: vi.fn(async (cb: (client: any) => Promise<any>) => {
+  transaction: vi.fn(async (cb: (client: unknown) => Promise<unknown>) => {
     const fakeClient = { query: vi.fn() };
     return cb(fakeClient);
   }),
@@ -117,7 +118,7 @@ describe('OtpService.send', () => {
 
     await svc.send({ phone: '+9647500000099', purpose: 'login' });
 
-    const createCall = (repo.create as any).mock.calls[0][0];
+    const createCall = vi.mocked(repo.create).mock.calls[0][0];
     expect(createCall.codeHash).toBe(hash('999999'));
     expect(sms.sent[0].message).toContain('999999');
   });

@@ -22,13 +22,23 @@ vi.mock('../../shared/config/platformConfig/index.js', () => ({
   }),
 }));
 
-// Mock transaction to invoke its callback with a fake client
+// Mock transaction to invoke its callback with a fake client.
+// `unknown` for the cb because the fake client only implements .query(), not the full
+// CustomClient interface — and rebuilding the full interface adds no test value.
 vi.mock('../../db.js', () => ({
-  transaction: vi.fn(async (cb: any) => cb({ query: vi.fn(async () => ({ rows: [] })) })),
+  transaction: vi.fn(async (cb: (client: unknown) => Promise<unknown>) =>
+    cb({ query: vi.fn(async () => ({ rows: [] })) }),
+  ),
   query: vi.fn(async () => []),
 }));
 
 import { query } from '../../db.js';
+
+// `buildQueryHandler` returns a relaxed `(sql, params?) => Promise<unknown[]>`. The
+// real `query` function is generic over a QueryResultRow constraint that the test
+// helper can't satisfy without rebuilding pg's type machinery. We funnel through
+// `as unknown as typeof query` at every mockImplementation call site — the runtime
+// shape matches what query() returns, just with a relaxed TypeScript signature.
 
 // ─── fixtures ─────────────────────────────────────────────────────────────────
 
@@ -158,25 +168,26 @@ function buildQueryHandler(opts: {
   divisions?: Array<{ id: string; gameId: string; genderRestriction: 'male' | 'female' | 'mixed' | null }>;
   user?: { id: string; gender: 'male' | 'female' | 'prefer_not_say' | null };
   divisionLookup?: Record<string, { id: string; gameId: string; genderRestriction: 'male' | 'female' | 'mixed' | null }>;
-}): (sql: string, _params?: any) => Promise<any[]> {
-  return async (sql: string, params: any) => {
+}): (sql: string, params?: Record<string, unknown>) => Promise<unknown[]> {
+  return async (sql: string, params?: Record<string, unknown>) => {
+    const p = params ?? {};
     if (sql.includes('FROM games WHERE id')) {
-      if (!opts.game || params.id !== opts.game.id) return [];
+      if (!opts.game || p.id !== opts.game.id) return [];
       return [{ id: opts.game.id, slug: 'football', participantType: opts.game.participantType ?? 'team', isActive: opts.game.isActive ?? true }];
     }
     if (sql.includes('FROM "gameFormats" WHERE id')) {
-      if (!opts.format || params.id !== opts.format.id) return [];
+      if (!opts.format || p.id !== opts.format.id) return [];
       return [{ id: opts.format.id, gameId: opts.format.gameId, minRosterSize: opts.format.minRosterSize ?? 5, maxRosterSize: opts.format.maxRosterSize ?? 8, isActive: opts.format.isActive ?? true }];
     }
     if (sql.includes('FROM divisions WHERE "gameId"')) {
-      return (opts.divisions ?? []).filter((d) => d.gameId === params.gameId);
+      return (opts.divisions ?? []).filter((d) => d.gameId === p.gameId);
     }
     if (sql.includes('FROM divisions WHERE id')) {
-      const d = (opts.divisionLookup ?? {})[params.id];
+      const d = (opts.divisionLookup ?? {})[p.id as string];
       return d ? [d] : [];
     }
     if (sql.includes('FROM "user" WHERE id')) {
-      if (opts.user && params.id === opts.user.id) return [opts.user];
+      if (opts.user && p.id === opts.user.id) return [opts.user];
       return [];
     }
     return [];
@@ -201,7 +212,7 @@ describe('TeamService.createTeam', () => {
       format: { id: FOOTBALL_5V5, gameId: FOOTBALL_GAME },
       divisions: [{ id: MALE_DIV, gameId: FOOTBALL_GAME, genderRestriction: 'male' }],
       user: { id: CAPTAIN, gender: 'male' },
-    }) as any);
+    }) as unknown as typeof query);
 
     const out = await svc.createTeam({
       gameId: FOOTBALL_GAME, formatId: FOOTBALL_5V5, divisionId: MALE_DIV,
@@ -219,7 +230,7 @@ describe('TeamService.createTeam', () => {
     vi.mocked(query).mockImplementation(buildQueryHandler({
       game: { id: FOOTBALL_GAME, isActive: false },
       format: { id: FOOTBALL_5V5, gameId: FOOTBALL_GAME },
-    }) as any);
+    }) as unknown as typeof query);
 
     await expect(svc.createTeam({
       gameId: FOOTBALL_GAME, formatId: FOOTBALL_5V5, divisionId: MALE_DIV, name: 'X',
@@ -230,7 +241,7 @@ describe('TeamService.createTeam', () => {
     vi.mocked(query).mockImplementation(buildQueryHandler({
       game: { id: FOOTBALL_GAME },
       format: { id: FOOTBALL_5V5, gameId: 'other-game' },
-    }) as any);
+    }) as unknown as typeof query);
 
     await expect(svc.createTeam({
       gameId: FOOTBALL_GAME, formatId: FOOTBALL_5V5, divisionId: MALE_DIV, name: 'X',
@@ -242,7 +253,7 @@ describe('TeamService.createTeam', () => {
       game: { id: FOOTBALL_GAME },
       format: { id: FOOTBALL_5V5, gameId: FOOTBALL_GAME },
       divisions: [{ id: MALE_DIV, gameId: FOOTBALL_GAME, genderRestriction: 'male' }],
-    }) as any);
+    }) as unknown as typeof query);
 
     await expect(svc.createTeam({
       gameId: FOOTBALL_GAME, formatId: FOOTBALL_5V5, name: 'X',
@@ -255,7 +266,7 @@ describe('TeamService.createTeam', () => {
       format: { id: FOOTBALL_5V5, gameId: FOOTBALL_GAME },
       divisions: [{ id: MALE_DIV, gameId: FOOTBALL_GAME, genderRestriction: 'male' }],
       user: { id: CAPTAIN, gender: 'female' },
-    }) as any);
+    }) as unknown as typeof query);
 
     await expect(svc.createTeam({
       gameId: FOOTBALL_GAME, formatId: FOOTBALL_5V5, divisionId: MALE_DIV, name: 'X',
@@ -268,7 +279,7 @@ describe('TeamService.createTeam', () => {
       format: { id: FOOTBALL_5V5, gameId: FOOTBALL_GAME },
       divisions: [{ id: MIXED_DIV, gameId: FOOTBALL_GAME, genderRestriction: 'mixed' }],
       user: { id: CAPTAIN, gender: 'male' },
-    }) as any);
+    }) as unknown as typeof query);
     repos.log.findMostRecentDisband = vi.fn(async () => new Date()); // just disbanded
 
     await expect(svc.createTeam({
@@ -282,7 +293,7 @@ describe('TeamService.createTeam', () => {
       format: { id: FOOTBALL_5V5, gameId: FOOTBALL_GAME },
       divisions: [{ id: MIXED_DIV, gameId: FOOTBALL_GAME, genderRestriction: 'mixed' }],
       user: { id: CAPTAIN, gender: 'male' },
-    }) as any);
+    }) as unknown as typeof query);
     repos.log.countCreatesInWindow = vi.fn(async () => 2); // already at limit
 
     await expect(svc.createTeam({
@@ -296,7 +307,7 @@ describe('TeamService.createTeam', () => {
       format: { id: FOOTBALL_5V5, gameId: FOOTBALL_GAME },
       divisions: [{ id: MIXED_DIV, gameId: FOOTBALL_GAME, genderRestriction: 'mixed' }],
       user: { id: CAPTAIN, gender: 'male' },
-    }) as any);
+    }) as unknown as typeof query);
     let calls = 0;
     repos.team.findBySlug = vi.fn(async () => {
       calls += 1;
@@ -334,7 +345,7 @@ describe('TeamService.inviteMember', () => {
     repos.team.findById = vi.fn(async () => makeTeam());
     vi.mocked(query).mockImplementation(buildQueryHandler({
       user: { id: MEMBER_2, gender: 'male' },
-    }) as any);
+    }) as unknown as typeof query);
     repos.member.findActiveByUserAndScope = vi.fn(async () => makeMember({ userId: MEMBER_2 }));
 
     await expect(svc.inviteMember({ teamId: 't-1', userId: MEMBER_2 }, CAPTAIN))
@@ -346,7 +357,7 @@ describe('TeamService.inviteMember', () => {
     vi.mocked(query).mockImplementation(buildQueryHandler({
       format: { id: FOOTBALL_5V5, gameId: FOOTBALL_GAME, maxRosterSize: 5 },
       user: { id: MEMBER_2, gender: 'male' },
-    }) as any);
+    }) as unknown as typeof query);
     // Five active members already
     repos.member.findActiveMembersByTeam = vi.fn(async () =>
       Array.from({ length: 5 }, (_, i) => makeMember({ id: `m-${i}` })),
@@ -376,7 +387,7 @@ describe('TeamService.acceptInvite', () => {
     repos.team.findById = vi.fn(async () => makeTeam({ divisionId: null }));
     vi.mocked(query).mockImplementation(buildQueryHandler({
       user: { id: MEMBER_2, gender: 'male' },
-    }) as any);
+    }) as unknown as typeof query);
     // Invitee meanwhile joined a different team in same scope
     repos.member.findActiveByUserAndScope = vi.fn(async () => makeMember({ userId: MEMBER_2 }));
 
@@ -425,7 +436,7 @@ describe('TeamService.transferCaptaincy', () => {
     vi.mocked(query).mockImplementation(buildQueryHandler({
       divisionLookup: { [MALE_DIV]: { id: MALE_DIV, gameId: FOOTBALL_GAME, genderRestriction: 'male' } },
       user: { id: MEMBER_2, gender: 'female' },
-    }) as any);
+    }) as unknown as typeof query);
 
     await expect(svc.transferCaptaincy('t-1', MEMBER_2, CAPTAIN))
       .rejects.toThrow(/NEW_CAPTAIN_GENDER_MISMATCH/);
