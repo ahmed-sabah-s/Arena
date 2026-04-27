@@ -36,6 +36,10 @@ function assertType(row: PlatformConfigRow, expected: PlatformConfigRow['valueTy
   }
 }
 
+// Each typed reader below uses `as <T>` AFTER a runtime `assertType` (or equivalent inline
+// check) that throws on mismatch. The cast is post-check narrowing — the only way to
+// inform TypeScript of a runtime invariant on `row.value` (which is JSONB / unknown).
+
 export async function getConfig<T = unknown>(key: string): Promise<T> {
   const row = await fetchRow(key);
   return row.value as T;

@@ -11,7 +11,7 @@ import { UserDTO } from './user.dto';
 import { IRoleRepository } from '../role/role.interface';
 import { AuditLogRepository } from '../audit/audit.repository';
 import { PasswordService } from '../../shared/security';
-import { OtpService, type OtpPurpose } from '../auth/otp';
+import { OtpService } from '../auth/otp';
 import { JwtService } from '../../shared/security';
 import { IRefreshTokenRepository } from '../auth/auth.interface';
 import type {
@@ -145,7 +145,7 @@ export class UserService {
     if (!this.otpService || !this.refreshTokenRepository) {
       throw new Error('UserService: OtpService and RefreshTokenRepository must be wired');
     }
-    await this.otpService.verify({ phone: newPhone, code, purpose: 'phone_change' as OtpPurpose });
+    await this.otpService.verify({ phone: newPhone, code, purpose: 'phone_change' });
 
     const conflict = await this.userRepository.findByPhone(newPhone);
     if (conflict && conflict.id !== userId) {

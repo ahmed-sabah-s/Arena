@@ -11,6 +11,13 @@ export interface JwtPayload {
   pwdFingerprint?: string;
 }
 
+// Casts in this file fall into two patterns:
+//   - `... as JwtPayload` on object literals: TypeScript widens `type: 'access'` to
+//     string without the cast. Asserting JwtPayload preserves the literal in the
+//     payload shape we sign.
+//   - `jwt.verify(...) as JwtPayload`: jsonwebtoken returns `string | object | JwtPayload`;
+//     we narrow to our payload shape and validate at runtime via the type-discriminator
+//     check (`payload.type !== ...`) immediately after.
 export class JwtService {
   generateAccessToken(userId: string, email?: string | null): string {
     // @types/jsonwebtoken uses ms.StringValue (branded) for expiresIn; our env strings
