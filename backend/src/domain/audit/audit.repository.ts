@@ -39,7 +39,7 @@ export class AuditLogRepository implements IAuditLogRepository {
     const cappedTake = Math.min(take, 200);
 
     const conditions: string[] = [];
-    const params: Record<string, any> = { take, skip };
+    const params: Record<string, unknown> = { take, skip };
 
     if (userId) { conditions.push('"userId" = :userId'); params.userId = userId; }
     if (action) { conditions.push('action = :action'); params.action = action; }

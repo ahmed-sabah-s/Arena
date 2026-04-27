@@ -1,7 +1,20 @@
 import { query, transaction } from '../../db';
 import { IUserRepository, CreateUserData } from './user.interface';
 import { User, UserWithRoles } from './user.entity';
-import { AppError, NotFoundError, ConflictError } from '../../shared/errors';
+import { AppError, NotFoundError, ConflictError, isPgError } from '../../shared/errors';
+
+interface UserRolePermissionRow {
+  id: string;
+  name: string;
+  resource: string;
+  action: string;
+}
+
+interface UserRoleRow {
+  id: string;
+  name: string;
+  permissions: UserRolePermissionRow[];
+}
 
 const rolesQuery = `
   SELECT r.id, r.name,
@@ -23,21 +36,21 @@ export class UserRepository implements IUserRepository {
   async findById(id: string): Promise<UserWithRoles | null> {
     const [user] = await query<User>(`SELECT * FROM "user" WHERE id = :id`, { id });
     if (!user) return null;
-    const roles = await query<any>(rolesQuery, { userId: id });
+    const roles = await query<UserRoleRow>(rolesQuery, { userId: id });
     return { ...user, roles };
   }
 
   async findByEmail(email: string): Promise<UserWithRoles | null> {
     const [user] = await query<User>(`SELECT * FROM "user" WHERE email = :email`, { email });
     if (!user) return null;
-    const roles = await query<any>(rolesQuery, { userId: user.id });
+    const roles = await query<UserRoleRow>(rolesQuery, { userId: user.id });
     return { ...user, roles };
   }
 
   async findByPhone(phone: string): Promise<UserWithRoles | null> {
     const [user] = await query<User>(`SELECT * FROM "user" WHERE phone = :phone`, { phone });
     if (!user) return null;
-    const roles = await query<any>(rolesQuery, { userId: user.id });
+    const roles = await query<UserRoleRow>(rolesQuery, { userId: user.id });
     return { ...user, roles };
   }
 
@@ -53,7 +66,7 @@ export class UserRepository implements IUserRepository {
       ? 'WHERE ("fullName" ILIKE :search OR email ILIKE :search OR phone ILIKE :search)'
       : '';
     const escapedSearch = search?.replace(/[%_\\]/g, (c) => `\\${c}`);
-    const params: Record<string, any> = { skip, take: cappedTake };
+    const params: Record<string, unknown> = { skip, take: cappedTake };
     if (escapedSearch) params.search = `%${escapedSearch}%`;
 
     const users = await query<User>(
@@ -70,7 +83,7 @@ export class UserRepository implements IUserRepository {
 
     const usersWithRoles = await Promise.all(
       users.map(async (user) => {
-        const roles = await query<any>(rolesQuery, { userId: user.id });
+        const roles = await query<UserRoleRow>(rolesQuery, { userId: user.id });
         return { ...user, roles };
       })
     );
@@ -109,8 +122,8 @@ export class UserRepository implements IUserRepository {
       );
       if (!row) throw new AppError('Failed to create user', 500);
       return row;
-    } catch (err: any) {
-      if (err.code === '23505') {
+    } catch (err: unknown) {
+      if (isPgError(err) && err.code === '23505') {
         // Distinguish unique violations on phone vs email
         if (err.constraint?.includes('phone')) throw new ConflictError('A user with this phone already exists');
         if (err.constraint?.includes('email')) throw new ConflictError('A user with this email already exists');
@@ -129,7 +142,7 @@ export class UserRepository implements IUserRepository {
 
   async update(id: string, data: Partial<User>): Promise<User> {
     const fields: string[] = [];
-    const params: Record<string, any> = { id };
+    const params: Record<string, unknown> = { id };
 
     for (const [key, value] of Object.entries(data)) {
       if (value !== undefined && key !== 'id' && UserRepository.UPDATABLE_COLUMNS.has(key)) {
@@ -151,8 +164,8 @@ export class UserRepository implements IUserRepository {
       );
       if (!row) throw new NotFoundError('User');
       return row;
-    } catch (err: any) {
-      if (err.code === '23505') {
+    } catch (err: unknown) {
+      if (isPgError(err) && err.code === '23505') {
         if (err.constraint?.includes('phone')) throw new ConflictError('A user with this phone already exists');
         if (err.constraint?.includes('email')) throw new ConflictError('A user with this email already exists');
       }

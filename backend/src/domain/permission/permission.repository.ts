@@ -1,7 +1,7 @@
 import { query } from '../../db';
 import { IPermissionRepository } from './permission.interface';
 import { Permission } from './permission.entity';
-import { AppError, NotFoundError, ConflictError } from '../../shared/errors';
+import { AppError, NotFoundError, ConflictError, isPgError } from '../../shared/errors';
 
 const UPDATABLE_COLUMNS = new Set(['name', 'description']);
 
@@ -42,15 +42,17 @@ export class PermissionRepository implements IPermissionRepository {
       );
       if (!row) throw new AppError('Failed to create permission', 500);
       return row;
-    } catch (err: any) {
-      if (err.code === '23505') throw new ConflictError('A permission with this name or resource/action already exists');
+    } catch (err: unknown) {
+      if (isPgError(err) && err.code === '23505') {
+        throw new ConflictError('A permission with this name or resource/action already exists');
+      }
       throw err;
     }
   }
 
   async update(id: string, data: Partial<Permission>): Promise<Permission> {
     const fields: string[] = [];
-    const params: Record<string, any> = { id };
+    const params: Record<string, unknown> = { id };
 
     for (const [key, value] of Object.entries(data)) {
       if (value !== undefined && key !== 'id' && UPDATABLE_COLUMNS.has(key)) {
