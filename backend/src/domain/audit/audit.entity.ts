@@ -3,7 +3,7 @@ export interface AuditLog {
   userId?: string;
   action: string;
   resource: string;
-  details?: any;
+  details?: unknown;
   ipAddress?: string;
   userAgent?: string;
   createdAt: Date;

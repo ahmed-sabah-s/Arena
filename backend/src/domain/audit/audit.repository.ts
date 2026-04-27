@@ -8,7 +8,7 @@ export class AuditLogRepository implements IAuditLogRepository {
     userId?: string;
     action: string;
     resource: string;
-    details?: any;
+    details?: unknown;
     ipAddress?: string;
     userAgent?: string;
   }): Promise<AuditLog> {
