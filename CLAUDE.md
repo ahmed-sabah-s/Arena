@@ -52,6 +52,22 @@ Shared Zod schemas live in `@arena/shared`. Never duplicate. Never cross-import 
 - OTP is rate-limited and hashed.
 - Admin actions are audited.
 
+## Git Workflow
+
+- **One branch per phase.** Name it `phase/N-short-description` (e.g. `phase/4-elo-engine`, `phase/5-matches-queue`). Branch from `main` at phase start.
+- **Conventional commit prefixes.** Subject ≤ 72 characters. Use:
+  - `feat:` new features
+  - `fix:` bug fixes
+  - `chore:` housekeeping
+  - `refactor:` restructuring without behavior change
+  - `test:` test additions/changes
+  - `docs:` documentation
+- **One commit per task or logical unit.** Not one commit per phase, not one per file. Roughly 4–10 commits per phase is the right shape.
+- **End-of-phase doc.** The final commit on a phase branch adds `/docs/phases/phase-N.md` summarizing the phase. The branch is then ready to merge.
+- **Never push to remote.** That's the user's call.
+- **Never force-push, rebase shared history, or delete unmerged branches.** Destructive git operations are off-limits.
+- **Never commit secrets.** Always run `git status` before committing to confirm the staged set. `.env` files are gitignored; only `.env.example` (no real values) is committed.
+
 ## Reference Documents
 
 - [README.md](README.md) – Project overview
