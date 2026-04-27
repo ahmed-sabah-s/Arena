@@ -4,6 +4,7 @@ import { userRouter } from "../../domain/user";
 import { roleRouter } from "../../domain/role";
 import { permissionRouter } from "../../domain/permission";
 import { fileRouter } from "../../domain/file";
+import { teamRouter } from "../../domain/team";
 
 export const appRouter = router({
   auth: authRouter,
@@ -11,6 +12,7 @@ export const appRouter = router({
   role: roleRouter,
   permission: permissionRouter,
   file: fileRouter,
+  team: teamRouter,
 });
 
 export type AppRouter = typeof appRouter;

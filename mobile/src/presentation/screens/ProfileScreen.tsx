@@ -19,7 +19,7 @@ export function ProfileScreen() {
       <View style={styles.content}>
         <View style={styles.card}>
           <Text style={styles.label}>Name</Text>
-          <Text style={styles.value}>{profile?.name}</Text>
+          <Text style={styles.value}>{profile?.fullName}</Text>
         </View>
 
         <View style={styles.card}>

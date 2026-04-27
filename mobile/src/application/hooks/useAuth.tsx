@@ -16,7 +16,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<any | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const loginMutation = trpc.auth.login.useMutation();
+  const loginMutation = trpc.auth.loginWithPassword.useMutation();
   const logoutMutation = trpc.auth.logout.useMutation();
 
   // Load user on mount
@@ -48,7 +48,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = async () => {
     try {
-      await logoutMutation.mutateAsync();
+      const refreshToken = await authStorage.getRefreshToken();
+      if (refreshToken) {
+        await logoutMutation.mutateAsync({ refreshToken });
+      }
     } catch (error) {
       // Continue with local logout even if server fails
     }

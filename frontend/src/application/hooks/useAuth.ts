@@ -7,19 +7,13 @@ export const useAuth = () => {
   const navigate = useNavigate();
   const utils = trpc.useUtils();
 
-  const loginMutation = trpc.auth.login.useMutation({
+  const loginMutation = trpc.auth.loginWithPassword.useMutation({
     onSuccess: (data) => {
       authStorage.setAccessToken(data.accessToken);
       authStorage.setRefreshToken(data.refreshToken);
       authStorage.setUser(data.user);
       utils.user.getMe.invalidate();
       navigate('/dashboard');
-    },
-  });
-
-  const registerMutation = trpc.auth.register.useMutation({
-    onSuccess: () => {
-      navigate('/login');
     },
   });
 
@@ -42,11 +36,14 @@ export const useAuth = () => {
     [loginMutation]
   );
 
+  // Email/password registration was removed in Phase 2 — phone+OTP is the primary path.
+  // Phase 9 (admin dashboard) and Phase 11 (mobile) will build the new auth UI.
+  // Until then, this stub keeps the legacy template's RegisterPage compiling.
   const register = useCallback(
-    (email: string, password: string, name: string) => {
-      return registerMutation.mutateAsync({ email, password, name });
+    async (_email: string, _password: string, _name: string) => {
+      throw new Error('Email/password registration is no longer supported. Use phone+OTP via the Arena mobile app.');
     },
-    [registerMutation]
+    []
   );
 
   const logout = useCallback(() => {
@@ -82,8 +79,8 @@ export const useAuth = () => {
     logout,
     hasPermission,
     loginError: loginMutation.error,
-    registerError: registerMutation.error,
+    registerError: null as Error | null,
     isLoginLoading: loginMutation.isPending,
-    isRegisterLoading: registerMutation.isPending,
+    isRegisterLoading: false,
   };
 };

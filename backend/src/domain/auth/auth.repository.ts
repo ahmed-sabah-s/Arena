@@ -51,12 +51,14 @@ export class RefreshTokenRepository implements IRefreshTokenRepository {
     );
   }
 
-  async revokeAllForUser(userId: string): Promise<void> {
-    await query(
+  async revokeAllForUser(userId: string): Promise<number> {
+    const rows = await query<{ id: string }>(
       `UPDATE "refreshToken" SET "revokedAt" = CURRENT_TIMESTAMP
-       WHERE "userId" = :userId AND "revokedAt" IS NULL`,
+       WHERE "userId" = :userId AND "revokedAt" IS NULL
+       RETURNING id`,
       { userId }
     );
+    return rows.length;
   }
 
   async deleteExpired(): Promise<void> {

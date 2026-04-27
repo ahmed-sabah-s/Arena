@@ -1,5 +1,5 @@
 import { query, transaction } from '../../db';
-import { IUserRepository } from './user.interface';
+import { IUserRepository, CreateUserData } from './user.interface';
 import { User, UserWithRoles } from './user.entity';
 import { AppError, NotFoundError, ConflictError } from '../../shared/errors';
 
@@ -34,6 +34,13 @@ export class UserRepository implements IUserRepository {
     return { ...user, roles };
   }
 
+  async findByPhone(phone: string): Promise<UserWithRoles | null> {
+    const [user] = await query<User>(`SELECT * FROM "user" WHERE phone = :phone`, { phone });
+    if (!user) return null;
+    const roles = await query<any>(rolesQuery, { userId: user.id });
+    return { ...user, roles };
+  }
+
   async findMany(options: {
     skip?: number;
     take?: number;
@@ -42,7 +49,9 @@ export class UserRepository implements IUserRepository {
     const { skip = 0, take = 10, search } = options;
 
     const cappedTake = Math.min(take, 100);
-    const where = search ? 'WHERE name ILIKE :search OR email ILIKE :search' : '';
+    const where = search
+      ? 'WHERE ("fullName" ILIKE :search OR email ILIKE :search OR phone ILIKE :search)'
+      : '';
     const escapedSearch = search?.replace(/[%_\\]/g, (c) => `\\${c}`);
     const params: Record<string, any> = { skip, take: cappedTake };
     if (escapedSearch) params.search = `%${escapedSearch}%`;
@@ -69,31 +78,53 @@ export class UserRepository implements IUserRepository {
     return { users: usersWithRoles, total };
   }
 
-  async create(data: {
-    email: string;
-    password: string;
-    name: string;
-    phone?: string;
-  }): Promise<User> {
+  async create(data: CreateUserData): Promise<User> {
     try {
       const [row] = await query<User>(
-        `INSERT INTO "user" (email, password, name, phone)
-         VALUES (:email, :password, :name, :phone)
+        `INSERT INTO "user" (
+           phone, email, password, "fullName", avatar, gender, city,
+           country, "preferredLanguage", "preferredCurrency",
+           "experienceLevel", "phoneVerifiedAt"
+         )
+         VALUES (
+           :phone, :email, :password, :fullName, :avatar, :gender, :city,
+           COALESCE(:country, 'IQ'), COALESCE(:preferredLanguage, 'ar'), COALESCE(:preferredCurrency, 'IQD'),
+           :experienceLevel, :phoneVerifiedAt
+         )
          RETURNING *`,
-        { email: data.email, password: data.password, name: data.name, phone: data.phone ?? null }
+        {
+          phone: data.phone,
+          email: data.email ?? null,
+          password: data.password ?? null,
+          fullName: data.fullName ?? data.phone,
+          avatar: data.avatar ?? null,
+          gender: data.gender ?? null,
+          city: data.city ?? null,
+          country: data.country ?? null,
+          preferredLanguage: data.preferredLanguage ?? null,
+          preferredCurrency: data.preferredCurrency ?? null,
+          experienceLevel: data.experienceLevel ?? null,
+          phoneVerifiedAt: data.phoneVerifiedAt ?? null,
+        }
       );
       if (!row) throw new AppError('Failed to create user', 500);
       return row;
     } catch (err: any) {
-      if (err.code === '23505') throw new ConflictError('A user with this email already exists');
+      if (err.code === '23505') {
+        // Distinguish unique violations on phone vs email
+        if (err.constraint?.includes('phone')) throw new ConflictError('A user with this phone already exists');
+        if (err.constraint?.includes('email')) throw new ConflictError('A user with this email already exists');
+        throw new ConflictError('A user with these details already exists');
+      }
       throw err;
     }
   }
 
   private static readonly UPDATABLE_COLUMNS = new Set([
-    'name', 'password', 'avatar', 'phone',
-    'isActive', 'emailVerified', 'emailVerifiedAt',
-    'twoFactorSecret', 'twoFactorEnabled', 'lastLoginAt',
+    'email', 'password', 'phone', 'fullName', 'avatar', 'gender', 'city',
+    'country', 'preferredLanguage', 'preferredCurrency', 'experienceLevel',
+    'isActive', 'emailVerified', 'emailVerifiedAt', 'phoneVerifiedAt',
+    'onboardingCompletedAt', 'twoFactorSecret', 'twoFactorEnabled', 'lastLoginAt',
   ]);
 
   async update(id: string, data: Partial<User>): Promise<User> {
@@ -113,12 +144,20 @@ export class UserRepository implements IUserRepository {
       return existing;
     }
 
-    const [row] = await query<User>(
-      `UPDATE "user" SET ${fields.join(', ')} WHERE id = :id RETURNING *`,
-      params
-    );
-    if (!row) throw new NotFoundError('User');
-    return row;
+    try {
+      const [row] = await query<User>(
+        `UPDATE "user" SET ${fields.join(', ')} WHERE id = :id RETURNING *`,
+        params
+      );
+      if (!row) throw new NotFoundError('User');
+      return row;
+    } catch (err: any) {
+      if (err.code === '23505') {
+        if (err.constraint?.includes('phone')) throw new ConflictError('A user with this phone already exists');
+        if (err.constraint?.includes('email')) throw new ConflictError('A user with this email already exists');
+      }
+      throw err;
+    }
   }
 
   async delete(id: string): Promise<void> {

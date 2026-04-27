@@ -4,15 +4,32 @@ import {
   protectedProcedureWithErrorHandling,
 } from '../../presentation/trpc';
 import { z } from 'zod';
+import {
+  RequestOtpInputSchema,
+  VerifyOtpInputSchema,
+  LoginPasswordInputSchema,
+  RefreshSessionInputSchema,
+  LogoutInputSchema,
+  ForgotPasswordInputSchema,
+  ResetPasswordInputSchema,
+} from '@arena/shared';
 import { AuthService } from './auth.service';
 import { RefreshTokenRepository } from './auth.repository';
+import { OtpRepository, OtpService } from './otp';
 import { JwtService, PasswordService, TwoFactorService } from '../../shared/security';
 import { EmailService } from '../../shared/service';
 import { UserRepository } from '../user';
-import { loginLimiter, registerLimiter, passwordResetLimiter, refreshTokenLimiter } from '../../shared/middleware/rateLimiter';
+import {
+  loginLimiter,
+  registerLimiter,
+  passwordResetLimiter,
+  refreshTokenLimiter,
+} from '../../shared/middleware/rateLimiter';
 
 const userRepository = new UserRepository();
 const refreshTokenRepository = new RefreshTokenRepository();
+const otpRepository = new OtpRepository();
+const otpService = new OtpService(otpRepository);
 const jwtService = new JwtService();
 const passwordService = new PasswordService();
 const twoFactorService = new TwoFactorService();
@@ -24,62 +41,74 @@ const authService = new AuthService(
   jwtService,
   passwordService,
   twoFactorService,
-  emailService
+  emailService,
+  otpService,
 );
 
 const totpToken = z.string().regex(/^\d{6}$/, 'Token must be a 6-digit code');
 
 export const authRouter = router({
-  register: publicProcedureWithErrorHandling
-    .input(
-      z.object({
-        email: z.string().email(),
-        password: z
-          .string()
-          .min(8, 'Password must be at least 8 characters')
-          .regex(/[A-Z]/, 'Password must contain an uppercase letter')
-          .regex(/[a-z]/, 'Password must contain a lowercase letter')
-          .regex(/[0-9]/, 'Password must contain a number')
-          .regex(/[^A-Za-z0-9]/, 'Password must contain a special character'),
-        name: z.string().min(2),
-      })
-    )
+  // ── OTP-based phone auth ─────────────────────────────────────────────────
+  requestRegistrationOtp: publicProcedureWithErrorHandling
+    .input(RequestOtpInputSchema)
     .mutation(async ({ input, ctx }) => {
       registerLimiter.check(ctx.req.ip ?? 'unknown');
-      return authService.register(input.email, input.password, input.name);
-    }),
-
-  login: publicProcedureWithErrorHandling
-    .input(
-      z.object({
-        email: z.string().email(),
-        password: z.string().min(1, 'Password is required'),
-        twoFactorCode: totpToken.optional(),
-      })
-    )
-    .mutation(async ({ input, ctx }) => {
-      loginLimiter.check(ctx.req.ip ?? 'unknown');
-      return authService.login(input.email, input.password, input.twoFactorCode, {
+      return authService.requestRegistrationOtp({
+        phone: input.phone,
         ipAddress: ctx.req.ip,
         userAgent: ctx.req.headers['user-agent'],
       });
     }),
 
-  refreshToken: publicProcedureWithErrorHandling
-    .input(z.object({ refreshToken: z.string() }))
+  verifyRegistrationOtp: publicProcedureWithErrorHandling
+    .input(VerifyOtpInputSchema)
+    .mutation(async ({ input }) => {
+      return authService.verifyRegistrationOtp({ phone: input.phone, code: input.code });
+    }),
+
+  requestLoginOtp: publicProcedureWithErrorHandling
+    .input(RequestOtpInputSchema)
+    .mutation(async ({ input, ctx }) => {
+      loginLimiter.check(ctx.req.ip ?? 'unknown');
+      return authService.requestLoginOtp({
+        phone: input.phone,
+        ipAddress: ctx.req.ip,
+        userAgent: ctx.req.headers['user-agent'],
+      });
+    }),
+
+  verifyLoginOtp: publicProcedureWithErrorHandling
+    .input(VerifyOtpInputSchema)
+    .mutation(async ({ input }) => {
+      return authService.verifyLoginOtp({ phone: input.phone, code: input.code });
+    }),
+
+  // ── Email + password (secondary) ──────────────────────────────────────────
+  loginWithPassword: publicProcedureWithErrorHandling
+    .input(LoginPasswordInputSchema)
+    .mutation(async ({ input, ctx }) => {
+      loginLimiter.check(ctx.req.ip ?? 'unknown');
+      return authService.loginWithPassword(input.email, input.password, input.twoFactorCode);
+    }),
+
+  // ── Session management ───────────────────────────────────────────────────
+  refreshSession: publicProcedureWithErrorHandling
+    .input(RefreshSessionInputSchema)
     .mutation(async ({ input, ctx }) => {
       refreshTokenLimiter.check(ctx.req.ip ?? 'unknown');
-      return authService.refreshAccessToken(input.refreshToken);
+      return authService.refreshSession(input.refreshToken);
     }),
 
   logout: protectedProcedureWithErrorHandling
-    .input(z.object({ refreshToken: z.string() }))
-    .mutation(async ({ input }) => {
-      return authService.logout(input.refreshToken);
-    }),
+    .input(LogoutInputSchema)
+    .mutation(async ({ input }) => authService.logout(input.refreshToken)),
 
+  logoutAll: protectedProcedureWithErrorHandling
+    .mutation(async ({ ctx }) => authService.logoutAll(ctx.user.id)),
+
+  // ── Forgot / reset password (email) ──────────────────────────────────────
   forgotPassword: publicProcedureWithErrorHandling
-    .input(z.object({ email: z.string().email() }))
+    .input(ForgotPasswordInputSchema)
     .mutation(async ({ input, ctx }) => {
       passwordResetLimiter.check(ctx.req.ip ?? 'unknown');
       await authService.forgotPassword(input.email);
@@ -87,31 +116,16 @@ export const authRouter = router({
     }),
 
   resetPassword: publicProcedureWithErrorHandling
-    .input(
-      z.object({
-        token: z.string(),
-        newPassword: z
-          .string()
-          .min(8, 'Password must be at least 8 characters')
-          .regex(/[A-Z]/, 'Password must contain an uppercase letter')
-          .regex(/[a-z]/, 'Password must contain a lowercase letter')
-          .regex(/[0-9]/, 'Password must contain a number')
-          .regex(/[^A-Za-z0-9]/, 'Password must contain a special character'),
-      })
-    )
+    .input(ResetPasswordInputSchema)
     .mutation(async ({ input, ctx }) => {
       passwordResetLimiter.check(ctx.req.ip ?? 'unknown');
-      await authService.resetPassword(input.token, input.newPassword, {
-        ipAddress: ctx.req.ip,
-        userAgent: ctx.req.headers['user-agent'],
-      });
+      await authService.resetPassword(input.token, input.newPassword);
       return { success: true };
     }),
 
+  // ── 2FA ───────────────────────────────────────────────────────────────────
   enable2FA: protectedProcedureWithErrorHandling
-    .mutation(async ({ ctx }) => {
-      return authService.enable2FA(ctx.user.id);
-    }),
+    .mutation(async ({ ctx }) => authService.enable2FA(ctx.user.id)),
 
   verify2FA: protectedProcedureWithErrorHandling
     .input(z.object({ token: totpToken }))

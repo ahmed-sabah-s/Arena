@@ -3,6 +3,27 @@ import pg from "pg";
 
 const { Pool, Client } = pg;
 
+// Named-parameter conversion helper — shared between CustomClient and CustomPool.
+// Replaces :paramName with $1, $2, ... and returns the converted query + positional values.
+function convertNamedParams(
+  query: string,
+  params: Record<string, any>
+): { convertedQuery: string; values: any[] } {
+  const m = new Map<string, number>();
+  const convertedQuery = query.replace(
+    /(?<!:):([a-zA-Z0-9_]+)/g,
+    (_, key: string) => {
+      if (params[key] === undefined) {
+        throw new Error(`Missing parameter: ${key}`);
+      }
+      m.set(key, m.get(key) ?? m.size + 1);
+      return `$${m.get(key)}`;
+    }
+  );
+  const values = [...m.keys()].map((key) => params[key]);
+  return { convertedQuery, values };
+}
+
 // Custom Client with named parameters support
 // Use :paramName in queries instead of $1, $2, $3
 class CustomClient extends Client {
@@ -10,61 +31,54 @@ class CustomClient extends Client {
     super(...args);
   }
 
-  async query<T = any>(
-    query: string,
-    params?: Record<string, any> | any[]
-  ): Promise<pg.QueryResult<T>> {
-    // If no params or array params, use default behavior
-    if (params === undefined || params instanceof Array) {
-      return await super.query(query, params);
+  // Declare all overloads from pg.Client.query() so the override is structurally compatible.
+  // The implementation adds named-parameter support on top of the standard behaviour.
+  // The named-params overload (Record<string, any>) is an extension not present in the parent.
+  query<T extends pg.Submittable>(queryStream: T): T;
+  query<R extends any[] = any[], I = any[]>(queryConfig: pg.QueryArrayConfig<I>, values?: pg.QueryConfigValues<I>): Promise<pg.QueryResult<R>>;
+  query<R extends pg.QueryResultRow = any, I = any>(queryConfig: pg.QueryConfig<I>): Promise<pg.QueryResult<R>>;
+  query<R extends pg.QueryResultRow = any, I extends any[] = any[]>(queryTextOrConfig: string | pg.QueryConfig<I>, values?: pg.QueryConfigValues<I>): Promise<pg.QueryResult<R>>;
+  query<R extends pg.QueryResultRow = any>(queryText: string, namedParams: Record<string, any>): Promise<pg.QueryResult<R>>;
+  query(queryTextOrConfig: any, params?: any): any {
+    // Named params only apply when first arg is a plain string and params is a plain object
+    if (
+      typeof queryTextOrConfig === "string" &&
+      params !== undefined &&
+      !(params instanceof Array)
+    ) {
+      const { convertedQuery, values } = convertNamedParams(queryTextOrConfig, params);
+      // Cast needed: super.query(string, values[]) resolves to a union of overloads at the
+      // implementation level; we know it returns QueryResult at runtime.
+      return super.query(convertedQuery, values) as unknown as Promise<pg.QueryResult<any>>;
     }
-
-    // Convert named parameters to positional
-    const m = new Map();
-    const convertedQuery = query.replace(
-      /(?<!:):([a-zA-Z0-9_]+)/g,
-      (_, key) => {
-        if (params[key] === undefined) {
-          throw new Error(`Missing parameter: ${key}`);
-        }
-        m.set(key, m.get(key) ?? m.size + 1);
-        return `$${m.get(key)}`;
-      }
-    );
-
-    const values = [...m.keys()].map((key) => params[key]);
-    return await super.query(convertedQuery, values);
+    return super.query(queryTextOrConfig, params);
   }
 }
 
 // PostgreSQL connection pool with named parameters support
 class CustomPool extends Pool {
-  async query<T = any>(
-    query: string,
-    params?: Record<string, any> | any[]
-  ): Promise<pg.QueryResult<T>> {
-    // If no params or array params, use default behavior
-    if (params === undefined || params instanceof Array) {
-      return await super.query(query, params);
+  // Same overload strategy as CustomClient — pg.Pool.query() has the same overload set.
+  // The named-params overload (Record<string, any>) is an extension not present in the parent.
+  query<T extends pg.Submittable>(queryStream: T): T;
+  query<R extends any[] = any[], I = any[]>(queryConfig: pg.QueryArrayConfig<I>, values?: pg.QueryConfigValues<I>): Promise<pg.QueryResult<R>>;
+  query<R extends pg.QueryResultRow = any, I = any>(queryConfig: pg.QueryConfig<I>): Promise<pg.QueryResult<R>>;
+  query<R extends pg.QueryResultRow = any, I extends any[] = any[]>(queryTextOrConfig: string | pg.QueryConfig<I>, values?: pg.QueryConfigValues<I>): Promise<pg.QueryResult<R>>;
+  query<R extends pg.QueryResultRow = any>(queryText: string, namedParams: Record<string, any>): Promise<pg.QueryResult<R>>;
+  query(queryTextOrConfig: any, params?: any): any {
+    if (
+      typeof queryTextOrConfig === "string" &&
+      params !== undefined &&
+      !(params instanceof Array)
+    ) {
+      const { convertedQuery, values } = convertNamedParams(queryTextOrConfig, params);
+      return super.query(convertedQuery, values) as unknown as Promise<pg.QueryResult<any>>;
     }
-
-    // Convert named parameters to positional
-    const m = new Map();
-    const convertedQuery = query.replace(
-      /(?<!:):([a-zA-Z0-9_]+)/g,
-      (_, key) => {
-        if (params[key] === undefined) {
-          throw new Error(`Missing parameter: ${key}`);
-        }
-        m.set(key, m.get(key) ?? m.size + 1);
-        return `$${m.get(key)}`;
-      }
-    );
-
-    const values = [...m.keys()].map((key) => params[key]);
-    return await super.query(convertedQuery, values);
+    return super.query(queryTextOrConfig, params);
   }
 }
+
+// Export the CustomClient type so seed files and other callers can type the transaction callback.
+export type { CustomClient };
 
 // Export pool with named parameters support
 export const pool = new CustomPool({
@@ -81,12 +95,12 @@ pool.on("error", (err) => {
 });
 
 // Helper function for queries (supports both positional and named params)
-export const query = async <T = any>(
+export const query = async <T extends pg.QueryResultRow = any>(
   text: string,
   params?: Record<string, any> | any[]
 ): Promise<T[]> => {
   const start = Date.now();
-  const res = await pool.query<T>(text, params);
+  const res = await pool.query<T>(text, params as any);
   const duration = Date.now() - start;
 
   if (process.env.NODE_ENV === "development") {

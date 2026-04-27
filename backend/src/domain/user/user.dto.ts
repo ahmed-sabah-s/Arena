@@ -2,13 +2,23 @@ import { z } from 'zod';
 
 export const UserDTOSchema = z.object({
   id: z.string(),
-  email: z.string().email(),
-  name: z.string(),
-  avatar: z.string().nullable().optional(),
-  phone: z.string().nullable().optional(),
+  email: z.string().nullable(),
+  phone: z.string(),
+  fullName: z.string(),
+  avatar: z.string().nullable(),
+  gender: z.enum(['male', 'female', 'prefer_not_say']).nullable(),
+  city: z.string().nullable(),
+  country: z.string(),
+  preferredLanguage: z.enum(['ar', 'en']),
+  preferredCurrency: z.string(),
+  experienceLevel: z.enum(['beginner', 'intermediate', 'advanced', 'expert']).nullable(),
   isActive: z.boolean(),
   emailVerified: z.boolean(),
+  emailVerifiedAt: z.date().nullable(),
+  phoneVerifiedAt: z.date().nullable(),
+  onboardingCompletedAt: z.date().nullable(),
   twoFactorEnabled: z.boolean(),
+  lastLoginAt: z.date().nullable(),
   roles: z.array(
     z.object({
       id: z.string(),
@@ -19,30 +29,12 @@ export const UserDTOSchema = z.object({
           name: z.string(),
           resource: z.string(),
           action: z.string(),
-        })
+        }),
       ),
-    })
+    }),
   ),
   createdAt: z.date(),
   updatedAt: z.date(),
 });
 
 export type UserDTO = z.infer<typeof UserDTOSchema>;
-
-export const CreateUserDTOSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(8),
-  name: z.string().min(2),
-  phone: z.string().optional(),
-});
-
-export type CreateUserDTO = z.infer<typeof CreateUserDTOSchema>;
-
-export const UpdateUserDTOSchema = z.object({
-  name: z.string().min(2).optional(),
-  avatar: z.string().optional(),
-  phone: z.string().optional(),
-  isActive: z.boolean().optional(),
-});
-
-export type UpdateUserDTO = z.infer<typeof UpdateUserDTOSchema>;

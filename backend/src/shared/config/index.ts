@@ -21,11 +21,11 @@ const envSchema = z.object({
 
   // SMTP
   SMTP_HOST: z.string().optional(),
-  SMTP_PORT: z.string().transform(Number).default("587"),
+  SMTP_PORT: z.string().transform(Number).default(587),
   SMTP_SECURE: z
     .string()
     .transform((v) => v === "true")
-    .default("false"),
+    .default(false),
   SMTP_USER: z.string().optional(),
   SMTP_PASSWORD: z.string().optional(),
   EMAIL_FROM: z.string().optional(),
@@ -40,12 +40,12 @@ const envSchema = z.object({
   NODE_ENV: z
     .enum(["development", "production", "test"])
     .default("development"),
-  PORT: z.string().transform(Number).default("3000"),
+  PORT: z.string().transform(Number).default(3000),
   FRONTEND_URL: z.string().default("http://localhost:5173"),
 
   // Security
-  BCRYPT_ROUNDS: z.string().transform(Number).default("10"),
-  MAX_LOGIN_ATTEMPTS: z.string().transform(Number).default("5"),
+  BCRYPT_ROUNDS: z.string().transform(Number).default(10),
+  MAX_LOGIN_ATTEMPTS: z.string().transform(Number).default(5),
   LOGIN_ATTEMPTS_WINDOW: z.string().default("15m"),
 });
 

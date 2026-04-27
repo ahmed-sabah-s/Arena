@@ -4,26 +4,29 @@ import { AuthenticationError } from '../../errors';
 
 export interface JwtPayload {
   userId: string;
-  email: string;
+  /** Email is optional — phone-only users have no email. */
+  email?: string | null;
   type: 'access' | 'refresh' | 'reset';
   /** First 12 chars of the current password hash — invalidates token after password changes */
   pwdFingerprint?: string;
 }
 
 export class JwtService {
-  generateAccessToken(userId: string, email: string): string {
+  generateAccessToken(userId: string, email?: string | null): string {
+    // @types/jsonwebtoken uses ms.StringValue (branded) for expiresIn; our env strings
+    // are validated by Zod at startup and are valid ms format, so the cast is safe.
     return jwt.sign(
-      { userId, email, type: 'access' } as JwtPayload,
+      { userId, email: email ?? null, type: 'access' } as JwtPayload,
       config.JWT_SECRET,
-      { expiresIn: config.JWT_EXPIRES_IN }
+      { expiresIn: config.JWT_EXPIRES_IN as unknown as number }
     );
   }
 
-  generateRefreshToken(userId: string, email: string): string {
+  generateRefreshToken(userId: string, email?: string | null): string {
     return jwt.sign(
-      { userId, email, type: 'refresh' } as JwtPayload,
+      { userId, email: email ?? null, type: 'refresh' } as JwtPayload,
       config.JWT_REFRESH_SECRET,
-      { expiresIn: config.JWT_REFRESH_EXPIRES_IN }
+      { expiresIn: config.JWT_REFRESH_EXPIRES_IN as unknown as number }
     );
   }
 
@@ -36,7 +39,7 @@ export class JwtService {
     return jwt.sign(
       { userId, email, type: 'reset', pwdFingerprint } as JwtPayload,
       config.JWT_SECRET,
-      { expiresIn: '15m' }
+      { expiresIn: '15m' as unknown as number }
     );
   }
 

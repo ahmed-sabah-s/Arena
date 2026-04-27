@@ -10,15 +10,15 @@ import {
   Alert,
   ScrollView,
 } from "react-native";
-import { trpc } from "../../infrastructure/api/trpc";
+// Email/password registration was removed in Phase 2. Phase 11 will replace this
+// screen with the phone+OTP registration flow. Until then, the screen renders
+// but the submit action shows a maintenance message.
 
 export function RegisterScreen({ navigation }: any) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-
-  const registerMutation = trpc.auth.register.useMutation();
 
   const handleRegister = async () => {
     if (!email || !password || !name) {
@@ -28,12 +28,11 @@ export function RegisterScreen({ navigation }: any) {
 
     setIsLoading(true);
     try {
-      await registerMutation.mutateAsync({ email, password, name });
-      Alert.alert("Success", "Account created! Please sign in.", [
-        { text: "OK", onPress: () => navigation.navigate("Login") },
-      ]);
-    } catch (error: any) {
-      Alert.alert("Registration Failed", error.message || "Please try again");
+      Alert.alert(
+        "Registration Updated",
+        "Email registration is no longer supported. The new phone+OTP registration flow ships in Phase 11.",
+        [{ text: "OK", onPress: () => navigation.navigate("Login") }],
+      );
     } finally {
       setIsLoading(false);
     }

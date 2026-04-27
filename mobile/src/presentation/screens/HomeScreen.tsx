@@ -11,10 +11,11 @@ import { useAuth } from "../../application/hooks/useAuth";
 
 export function HomeScreen({ navigation }: any) {
   const { user, logout } = useAuth();
-  const { data: users, isLoading } = trpc.user.getAll.useQuery(
-    { limit: 10, offset: 0 },
+  const { data: usersData, isLoading } = trpc.user.getMany.useQuery(
+    { limit: 10 },
     { enabled: !!user }
   );
+  const users = usersData?.users;
 
   return (
     <View style={styles.container}>
@@ -36,7 +37,7 @@ export function HomeScreen({ navigation }: any) {
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Users ({users?.length || 0})</Text>
+          <Text style={styles.cardTitle}>Users ({usersData?.total || 0})</Text>
           {isLoading ? (
             <ActivityIndicator />
           ) : (

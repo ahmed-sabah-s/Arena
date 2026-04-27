@@ -10,9 +10,11 @@
     "typecheck": "tsc --noEmit",
     "db:migrate": "tsx database/migrate.ts",
     "db:migrate:dry": "tsx database/migrate.ts --dry-run",
-    "db:setup": "tsx database/setup.ts",
-    "db:seed": "tsx database/seed-runner.ts",
-    "db:reset": "tsx database/reset.ts && pnpm db:migrate && pnpm db:seed"
+    "db:seed": "tsx database/seeds/seed-runner.ts",
+    "db:reset": "tsx database/reset.ts && pnpm db:migrate && pnpm db:seed",
+    "db:test:reset": "tsx database/test-reset.ts",
+    "test": "vitest run --config vitest.config.ts",
+    "test:integration": "vitest run --config vitest.config.integration.ts"
   },
   "keywords": [],
   "author": "",
@@ -50,6 +52,7 @@
     "@types/speakeasy": "^2.0.10",
     "ts-node": "^10.9.2",
     "tsx": "^4.21.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.5"
   }
 }

@@ -19,7 +19,7 @@ export const DashboardPage = () => {
           <h1 className="text-xl font-bold">Dashboard</h1>
           <div className="flex items-center gap-4">
             <span className="text-sm text-muted-foreground">
-              Welcome, {user?.name}
+              Welcome, {user?.fullName}
             </span>
             <Button variant="outline" onClick={logout}>
               Logout

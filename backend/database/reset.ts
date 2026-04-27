@@ -12,7 +12,7 @@ function getDatabaseName(url: string): string {
 async function resetDatabase() {
   const databaseUrl = process.env.DATABASE_URL;
   const adminUrl = process.env.DATABASE_ADMIN_URL;
-  
+
   if (!databaseUrl || !adminUrl) {
     throw new Error("DATABASE_URL and DATABASE_ADMIN_URL required in .env");
   }
@@ -23,7 +23,7 @@ async function resetDatabase() {
   try {
     await client.connect();
     console.log(`🗑️  Dropping database "${dbName}"...`);
-    
+
     // Terminate existing connections
     await client.query(`
       SELECT pg_terminate_backend(pg_stat_activity.pid)
@@ -31,11 +31,15 @@ async function resetDatabase() {
       WHERE pg_stat_activity.datname = $1
       AND pid <> pg_backend_pid()
     `, [dbName]);
-    
+
     // Drop database
     await client.query(`DROP DATABASE IF EXISTS "${dbName}"`);
-    console.log(`✅ Database dropped\n`);
-    
+    console.log(`✅ Database dropped`);
+
+    // Recreate so migrate.ts can connect
+    await client.query(`CREATE DATABASE "${dbName}"`);
+    console.log(`✅ Database recreated\n`);
+
   } finally {
     await client.end();
   }

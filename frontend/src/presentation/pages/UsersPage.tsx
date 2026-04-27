@@ -52,7 +52,7 @@ export const UsersPage = () => {
                       className="flex items-center justify-between rounded-lg border p-4"
                     >
                       <div>
-                        <h3 className="font-semibold">{user.name}</h3>
+                        <h3 className="font-semibold">{user.fullName}</h3>
                         <p className="text-sm text-muted-foreground">{user.email}</p>
                         <p className="text-xs text-muted-foreground">
                           Roles: {user.roles.map((r) => r.name).join(', ')}

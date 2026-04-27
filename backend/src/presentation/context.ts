@@ -10,12 +10,12 @@ export const createContext = async ({
 }: CreateExpressContextOptions) => {
   const token = req.headers.authorization?.replace("Bearer ", "");
 
-  let user: { id: string; email: string } | null = null;
+  let user: { id: string; email: string | null } | null = null;
 
   if (token) {
     try {
       const payload = jwtService.verifyAccessToken(token);
-      user = { id: payload.userId, email: payload.email };
+      user = { id: payload.userId, email: payload.email ?? null };
     } catch (error) {
       // Token is invalid, user remains null
     }
