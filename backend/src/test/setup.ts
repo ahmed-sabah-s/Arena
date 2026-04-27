@@ -50,6 +50,9 @@ const migrationsDir = path.resolve(__dirname, '../../database/migrations');
 // DATABASE_URL at import time, which would point at the dev DB during tests.
 
 class TestClient extends pg.Client {
+  // Same pattern as CustomClient in src/db.ts: pg.Client.query() has many overloads,
+  // and the implementation signature must accept their union. Type-safe call sites
+  // are still possible because the parent's overloads are inherited.
   override async query(textOrConfig: any, paramsOrValues?: any): Promise<any> {
     if (
       typeof textOrConfig === 'string' &&
