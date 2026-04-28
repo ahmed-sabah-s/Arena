@@ -11,3 +11,4 @@ export * from './division.schemas';
 export * from './season.schemas';
 export * from './team.schemas';
 export * from './team-member.schemas';
+export * from './elo.schemas';
