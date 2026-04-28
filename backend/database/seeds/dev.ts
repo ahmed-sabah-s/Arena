@@ -205,4 +205,58 @@ export default async function seedDev(client: CustomClient): Promise<void> {
   const teamCountResult = await client.query<{ count: string }>(`SELECT COUNT(*) FROM teams WHERE status = 'active'`);
   const memberCountResult = await client.query<{ count: string }>(`SELECT COUNT(*) FROM "teamMembers" WHERE "releasedAt" IS NULL`);
   console.log(`  ✓ ${teamCountResult.rows[0].count} active teams, ${memberCountResult.rows[0].count} active memberships`);
+
+  // ─── Phase 4: seed teamElos for the seeded teams ────────────────────────
+  // Raw SQL because the team service path was bypassed for the team seeds above.
+  // Hardcoded thresholds match the seeded platformConfig defaults — acceptable
+  // here because (a) the dev seed has no production impact and (b) drift would
+  // be caught by the integration tests on the next run.
+  const SEED_BY_LEVEL: Record<'beginner' | 'intermediate' | 'advanced' | 'expert', number> = {
+    beginner: 800,
+    intermediate: 1000,
+    advanced: 1200,
+    expert: 1400,
+  };
+
+  // For each existing active team, insert an all-time teamElos row keyed off
+  // the captain's experienceLevel. Idempotent via the partial unique index.
+  await client.query(
+    `INSERT INTO "teamElos" (
+       "teamId", "gameId", "formatId", "divisionId", "seasonId",
+       elo, mmr, "highestElo", "highestMmr"
+     )
+     SELECT
+       t.id, t."gameId", t."formatId", t."divisionId", NULL,
+       CASE COALESCE(u."experienceLevel", 'intermediate')
+         WHEN 'beginner'     THEN ${SEED_BY_LEVEL.beginner}
+         WHEN 'intermediate' THEN ${SEED_BY_LEVEL.intermediate}
+         WHEN 'advanced'     THEN ${SEED_BY_LEVEL.advanced}
+         WHEN 'expert'       THEN ${SEED_BY_LEVEL.expert}
+       END AS seed,
+       CASE COALESCE(u."experienceLevel", 'intermediate')
+         WHEN 'beginner'     THEN ${SEED_BY_LEVEL.beginner}
+         WHEN 'intermediate' THEN ${SEED_BY_LEVEL.intermediate}
+         WHEN 'advanced'     THEN ${SEED_BY_LEVEL.advanced}
+         WHEN 'expert'       THEN ${SEED_BY_LEVEL.expert}
+       END,
+       CASE COALESCE(u."experienceLevel", 'intermediate')
+         WHEN 'beginner'     THEN ${SEED_BY_LEVEL.beginner}
+         WHEN 'intermediate' THEN ${SEED_BY_LEVEL.intermediate}
+         WHEN 'advanced'     THEN ${SEED_BY_LEVEL.advanced}
+         WHEN 'expert'       THEN ${SEED_BY_LEVEL.expert}
+       END,
+       CASE COALESCE(u."experienceLevel", 'intermediate')
+         WHEN 'beginner'     THEN ${SEED_BY_LEVEL.beginner}
+         WHEN 'intermediate' THEN ${SEED_BY_LEVEL.intermediate}
+         WHEN 'advanced'     THEN ${SEED_BY_LEVEL.advanced}
+         WHEN 'expert'       THEN ${SEED_BY_LEVEL.expert}
+       END
+     FROM teams t
+     JOIN "user" u ON u.id = t."captainId"
+     WHERE t.status = 'active'
+     ON CONFLICT DO NOTHING`,
+  );
+
+  const eloCountResult = await client.query<{ count: string }>(`SELECT COUNT(*) FROM "teamElos"`);
+  console.log(`  ✓ ${eloCountResult.rows[0].count} team ELO rows seeded`);
 }
