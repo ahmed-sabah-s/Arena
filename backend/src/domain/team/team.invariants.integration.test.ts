@@ -40,11 +40,14 @@ async function getDivisionId(gameSlug: string, divSlug: string): Promise<string>
   return r.rows[0].id;
 }
 
+import { TeamEloRepository, PlayerEloRepository, EloService } from '../elo';
+
 const teamRepo = new TeamRepository();
 const memberRepo = new TeamMemberRepository();
 const inviteRepo = new TeamInviteRepository();
 const logRepo = new TeamCreationLogRepository();
-const svc = new TeamService(teamRepo, memberRepo, inviteRepo, logRepo);
+const eloService = new EloService(new TeamEloRepository(), new PlayerEloRepository());
+const svc = new TeamService(teamRepo, memberRepo, inviteRepo, logRepo, eloService);
 
 afterAll(async () => {
   await closeTestPool();
@@ -54,7 +57,8 @@ beforeEach(async () => {
   // Do NOT truncate "user": platformConfig.updatedBy has a FK to user(id), and
   // CASCADE would wipe platformConfig along with users. Each test creates its own
   // users via createTestUser() with a random phone, so user-table growth is harmless.
-  await truncateTables('teamCreationLog', 'teamInvites', 'teamMembers', 'teams');
+  // teamElos cascades from teams via FK, but we list it explicitly so the order is stable.
+  await truncateTables('teamElos', 'teamCreationLog', 'teamInvites', 'teamMembers', 'teams');
 });
 
 // ─── 1. partial unique index — one active team per scope ──────────────────────

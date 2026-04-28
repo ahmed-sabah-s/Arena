@@ -15,6 +15,8 @@ import type {
 } from './team.interface.js';
 import type { Team, TeamMember, TeamInvite } from './team.entity.js';
 import { query } from '../../db.js';
+import type { EloService } from '../elo/elo.service.js';
+import type { ExperienceLevel } from '../../shared/elo/index.js';
 
 interface GameRow {
   id: string;
@@ -41,6 +43,7 @@ interface DivisionRow {
 interface UserRow {
   id: string;
   gender: 'male' | 'female' | 'prefer_not_say' | null;
+  experienceLevel?: ExperienceLevel | null;
 }
 
 export class TeamService {
@@ -49,6 +52,7 @@ export class TeamService {
     private memberRepo: ITeamMemberRepository,
     private inviteRepo: ITeamInviteRepository,
     private logRepo: ITeamCreationLogRepository,
+    private eloService: EloService,
   ) {}
 
   // ─── createTeam ───────────────────────────────────────────────────────────
@@ -113,6 +117,11 @@ export class TeamService {
 
     const slug = await this.generateUniqueSlug(game.id, input.name);
 
+    // Captain experience drives the seed ELO (Phase 4 — see EloService.seedTeamElo).
+    // Fetched once here so we can pass it to the seeder inside the transaction.
+    const captainForSeed = await this.fetchUser(captainUserId);
+    const captainExperienceLevel = captainForSeed?.experienceLevel ?? null;
+
     return await transaction(async (client) => {
       const team = await this.teamRepo.create(
         {
@@ -142,6 +151,17 @@ export class TeamService {
       );
 
       await this.logRepo.recordCreate(captainUserId, game.id, team.id, client);
+
+      await this.eloService.seedTeamElo(
+        {
+          teamId: team.id,
+          gameId: game.id,
+          formatId: format.id,
+          divisionId,
+          captainExperienceLevel,
+        },
+        client,
+      );
 
       return { team, captainMember };
     });
@@ -508,7 +528,7 @@ export class TeamService {
 
   private async fetchUser(id: string): Promise<UserRow | null> {
     const [row] = await query<UserRow>(
-      `SELECT id, gender FROM "user" WHERE id = :id`,
+      `SELECT id, gender, "experienceLevel" FROM "user" WHERE id = :id`,
       { id },
     );
     return row ?? null;

@@ -24,12 +24,18 @@ import {
   TeamCreationLogRepository,
 } from './team.repository.js';
 import { TeamService } from './team.service.js';
+import {
+  TeamEloRepository,
+  PlayerEloRepository,
+  EloService,
+} from '../elo';
 
 const teamRepo = new TeamRepository();
 const memberRepo = new TeamMemberRepository();
 const inviteRepo = new TeamInviteRepository();
 const logRepo = new TeamCreationLogRepository();
-const teamService = new TeamService(teamRepo, memberRepo, inviteRepo, logRepo);
+const eloService = new EloService(new TeamEloRepository(), new PlayerEloRepository());
+const teamService = new TeamService(teamRepo, memberRepo, inviteRepo, logRepo, eloService);
 
 export const teamRouter = router({
   // ── reads ──────────────────────────────────────────────────────────────

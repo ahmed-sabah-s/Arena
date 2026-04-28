@@ -9,6 +9,9 @@ export default defineConfig({
     pool: 'forks',
     // One worker process — all integration tests share the test DB sequentially.
     ...({ forks: { singleFork: true } } as any),
+    // Force test-file-by-test-file sequencing too; integration tests share the test DB
+    // and would otherwise contend on truncates and partial unique indexes.
+    fileParallelism: false,
     testTimeout: 15_000,
     passWithNoTests: true,
   },

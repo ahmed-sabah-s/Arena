@@ -96,16 +96,29 @@ export async function closeTestPool(): Promise<void> {
   }
 }
 
-let migrationsApplied = false;
-
 async function applyMigrationsOnce(): Promise<void> {
-  if (migrationsApplied) return;
-
+  // Vitest re-evaluates setupFiles per test file (even with singleFork). We can't
+  // rely on a module-level cache. Instead, ask the database whether migrations
+  // are already in place: if `schemaMigrations` exists and has rows matching the
+  // file count, skip the reset+apply entirely.
   const pool = getTestPool();
   const files = fs.readdirSync(migrationsDir).filter((f) => f.endsWith('.sql')).sort();
 
+  const tableCheck = await pool.query<{ exists: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1 FROM information_schema.tables
+       WHERE table_schema = 'public' AND table_name = 'teamElos'
+     ) AS exists`,
+  );
+  if (tableCheck.rows[0]?.exists) {
+    return;
+  }
+
   // Reset schema before applying — ensures a clean state per test process.
+  // Drop extensions first so the post-DROP-SCHEMA CREATE EXTENSION doesn't trip on
+  // orphaned pg_extension rows pointing at the now-gone public schema.
   await pool.query(`
+    DROP EXTENSION IF EXISTS "uuid-ossp" CASCADE;
     DROP SCHEMA IF EXISTS public CASCADE;
     CREATE SCHEMA public;
     GRANT ALL ON SCHEMA public TO public;
@@ -115,8 +128,6 @@ async function applyMigrationsOnce(): Promise<void> {
     const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf-8');
     await pool.query(sql);
   }
-
-  migrationsApplied = true;
 }
 
 beforeAll(async () => {

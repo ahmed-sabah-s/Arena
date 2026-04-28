@@ -110,6 +110,17 @@ function makeInvite(overrides: Partial<TeamInvite> = {}): TeamInvite {
   };
 }
 
+// Minimal EloService stub: implements only the methods TeamService calls. Phase 4
+// adds seedTeamElo as a single transactional dependency on createTeam.
+function makeEloServiceStub() {
+  return {
+    seedTeamElo: vi.fn(async () => undefined),
+    seedPlayerElo: vi.fn(async () => undefined),
+    recalculateTier: vi.fn(async () => 'silver' as const),
+    // Cast at boundary because tests don't need full EloService surface.
+  } as unknown as import('../elo').EloService;
+}
+
 function makeRepos() {
   const team: ITeamRepository = {
     create: vi.fn(async (input) => makeTeam({
@@ -202,7 +213,7 @@ describe('TeamService.createTeam', () => {
 
   beforeEach(() => {
     repos = makeRepos();
-    svc = new TeamService(repos.team, repos.member, repos.invite, repos.log);
+    svc = new TeamService(repos.team, repos.member, repos.invite, repos.log, makeEloServiceStub());
     vi.mocked(query).mockReset();
   });
 
@@ -332,7 +343,7 @@ describe('TeamService.inviteMember', () => {
 
   beforeEach(() => {
     repos = makeRepos();
-    svc = new TeamService(repos.team, repos.member, repos.invite, repos.log);
+    svc = new TeamService(repos.team, repos.member, repos.invite, repos.log, makeEloServiceStub());
   });
 
   it('rejects non-captain caller', async () => {
@@ -374,7 +385,7 @@ describe('TeamService.acceptInvite', () => {
 
   beforeEach(() => {
     repos = makeRepos();
-    svc = new TeamService(repos.team, repos.member, repos.invite, repos.log);
+    svc = new TeamService(repos.team, repos.member, repos.invite, repos.log, makeEloServiceStub());
   });
 
   it('rejects expired invite', async () => {
@@ -402,7 +413,7 @@ describe('TeamService.transferCaptaincy', () => {
 
   beforeEach(() => {
     repos = makeRepos();
-    svc = new TeamService(repos.team, repos.member, repos.invite, repos.log);
+    svc = new TeamService(repos.team, repos.member, repos.invite, repos.log, makeEloServiceStub());
   });
 
   it('happy path swaps flags and updates team captainId', async () => {
@@ -449,7 +460,7 @@ describe('TeamService.disbandTeam', () => {
 
   beforeEach(() => {
     repos = makeRepos();
-    svc = new TeamService(repos.team, repos.member, repos.invite, repos.log);
+    svc = new TeamService(repos.team, repos.member, repos.invite, repos.log, makeEloServiceStub());
   });
 
   it('rejects non-captain caller', async () => {
@@ -475,7 +486,7 @@ describe('TeamService.leaveTeam / releaseMember', () => {
 
   beforeEach(() => {
     repos = makeRepos();
-    svc = new TeamService(repos.team, repos.member, repos.invite, repos.log);
+    svc = new TeamService(repos.team, repos.member, repos.invite, repos.log, makeEloServiceStub());
   });
 
   it('leaveTeam rejects when caller is captain', async () => {
