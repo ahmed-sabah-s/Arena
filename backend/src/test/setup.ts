@@ -182,7 +182,9 @@ export async function createTestUser(
   }> = {},
 ): Promise<{ id: string; phone: string; fullName: string }> {
   const pool = getTestPool();
-  const phone = overrides.phone ?? `+9647500099${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`;
+  // Wider random space than 4 digits — with ~20 tests creating users, 4-digit
+  // collisions surfaced occasionally. 8 digits is comfortable headroom.
+  const phone = overrides.phone ?? `+96475${Math.floor(Math.random() * 1e8).toString().padStart(8, '0')}`;
   const fullName = overrides.fullName ?? 'Test User';
   const result = await pool.query<{ id: string }>(
     `INSERT INTO "user" (phone, "fullName", gender, city, country, "preferredLanguage", "preferredCurrency", "phoneVerifiedAt", "onboardingCompletedAt")

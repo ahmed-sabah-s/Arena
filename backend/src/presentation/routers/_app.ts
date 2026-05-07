@@ -7,6 +7,7 @@ import { fileRouter } from "../../domain/file";
 import { teamRouter } from "../../domain/team";
 import { notificationRouter } from "../../domain/notification";
 import { matchRouter } from "../../domain/match";
+import { queueRouter } from "../../domain/matchmaking";
 
 export const appRouter = router({
   auth: authRouter,
@@ -17,6 +18,7 @@ export const appRouter = router({
   team: teamRouter,
   notification: notificationRouter,
   match: matchRouter,
+  queue: queueRouter,
 });
 
 export type AppRouter = typeof appRouter;
