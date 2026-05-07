@@ -12,3 +12,8 @@ export * from './season.schemas';
 export * from './team.schemas';
 export * from './team-member.schemas';
 export * from './elo.schemas';
+export * from './notification.schemas';
+export * from './match.schemas';
+export * from './dispute.schemas';
+export * from './queue.schemas';
+export * from './match-invite.schemas';
