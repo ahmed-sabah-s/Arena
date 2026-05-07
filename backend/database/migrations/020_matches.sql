@@ -19,7 +19,8 @@ CREATE TABLE IF NOT EXISTS matches (
     CHECK ("matchMode" IN ('refereed', 'player_stats', 'score_only')),
   stakes VARCHAR(20) NOT NULL DEFAULT 'ranked'
     CHECK (stakes IN ('ranked', 'friendly')),
-  status VARCHAR(20) NOT NULL DEFAULT 'scheduled'
+  -- VARCHAR(30) to fit 'awaiting_confirmation' (21 chars) plus headroom.
+  status VARCHAR(30) NOT NULL DEFAULT 'scheduled'
     CHECK (status IN ('scheduled', 'active', 'awaiting_confirmation', 'completed', 'disputed', 'cancelled', 'voided', 'forfeited')),
   "venueId" UUID,
   "scheduledAt" TIMESTAMP NOT NULL,

@@ -106,7 +106,8 @@ export class TeamEloRepository implements ITeamEloRepository {
     for (const [key, value] of Object.entries(partial)) {
       if (value !== undefined && TeamEloRepository.UPDATABLE.has(key)) {
         fields.push(`"${key}" = :${key}`);
-        params[key] = value;
+        // form is a JSONB column; pg won't bind a JS array directly to JSONB.
+        params[key] = key === 'form' ? JSON.stringify(value) : value;
       }
     }
     if (fields.length === 0) {
@@ -206,7 +207,8 @@ export class PlayerEloRepository implements IPlayerEloRepository {
     for (const [key, value] of Object.entries(partial)) {
       if (value !== undefined && PlayerEloRepository.UPDATABLE.has(key)) {
         fields.push(`"${key}" = :${key}`);
-        params[key] = value;
+        // form is a JSONB column; pg won't bind a JS array directly to JSONB.
+        params[key] = key === 'form' ? JSON.stringify(value) : value;
       }
     }
     if (fields.length === 0) {
