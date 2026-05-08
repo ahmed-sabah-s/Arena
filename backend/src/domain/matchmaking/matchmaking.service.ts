@@ -163,59 +163,58 @@ export class MatchmakingService {
     );
   }
 
-  async acceptFriendly(entryId: string, byUserId: string): Promise<{ matched: boolean }> {
-    return await transaction(async (client) => {
-      const entry = await this.findEntryForUpdate(entryId, client);
-      if (!entry) throw new NotFoundError('QueueEntry');
-      await this.assertCallerOwnsEntry(entry, byUserId);
-      if (entry.status !== 'friendly_offered') {
-        throw new ConflictError('QUEUE_ENTRY_NOT_FRIENDLY_OFFERED');
-      }
-      // Move back to waiting and force a friendly-stakes pass.
-      await client.query(
-        `UPDATE "queueEntries" SET status = 'waiting' WHERE id = :id`,
-        { id: entry.id },
-      );
-      // Try to find any opponent in scope (gap = Infinity), creating a friendly match.
-      // We don't run the full pass here — instead, find one compatible opponent and pair.
-      const opponent = await client.query<QueueEntryRow>(
-        `SELECT * FROM "queueEntries"
-         WHERE status = 'waiting'
-           AND id <> :selfId
-           AND "gameId" = :gameId
-           AND "formatId" = :formatId
-           AND "divisionId" IS NOT DISTINCT FROM :divisionId
-         ORDER BY "queuedAt" ASC
-         LIMIT 1
-         FOR UPDATE`,
-        {
-          selfId: entry.id,
-          gameId: entry.gameId,
-          formatId: entry.formatId,
-          divisionId: entry.divisionId,
-        },
-      );
-      if (!opponent.rows[0]) return { matched: false };
+  async acceptFriendly(
+    entryId: string,
+    byUserId: string,
+  ): Promise<{ matched: boolean; matchId?: string }> {
+    // Validate ownership and status with a non-locking read first.
+    const [entry] = await query<QueueEntryRow>(
+      `SELECT * FROM "queueEntries" WHERE id = :id`,
+      { id: entryId },
+    );
+    if (!entry) throw new NotFoundError('QueueEntry');
+    await this.assertCallerOwnsEntry(entry, byUserId);
+    if (entry.status !== 'friendly_offered') {
+      throw new ConflictError('QUEUE_ENTRY_NOT_FRIENDLY_OFFERED');
+    }
 
-      // Pair them as a friendly match. We exit our transaction first (the match
-      // service opens its own), then call createMatchFromQueueEntries. To keep
-      // this simple and correct, we update entries as 'matched' afterwards via
-      // the match service's own transaction.
-      const otherId = opponent.rows[0].id;
-      // Drop our lock by committing — vitest's transaction helper commits on
-      // successful return. The pair is created next.
-      // Note: there's a small window between our COMMIT and the match service
-      // acquiring its locks where another pass could race. In practice the
-      // unique index plus FOR UPDATE in createMatchFromQueueEntries handles it.
-      // Tagging this entry with friendly is communicated via stakes='friendly' in the
-      // match service call.
-      void otherId;
-      // We can't continue inside this tx. Return a flag that the router can
-      // forward to a follow-up call. For now: leave both entries 'waiting' and
-      // expect the caller (or the next pass) to pair them. Practical behavior:
-      // most callers will see status flip to 'matched' on the next poll.
+    // Find any opponent in scope. MMR gap is intentionally ignored — the user
+    // opted into "match me with anyone" by accepting friendly. Both 'waiting'
+    // and 'friendly_offered' entries are eligible, so two opted-in friendlies
+    // can pair with each other.
+    const [opponent] = await query<QueueEntryRow>(
+      `SELECT * FROM "queueEntries"
+       WHERE id <> :selfId
+         AND status IN ('waiting', 'friendly_offered')
+         AND "gameId" = :gameId
+         AND "formatId" = :formatId
+         AND "divisionId" IS NOT DISTINCT FROM :divisionId
+       ORDER BY "queuedAt" ASC
+       LIMIT 1`,
+      {
+        selfId: entry.id,
+        gameId: entry.gameId,
+        formatId: entry.formatId,
+        divisionId: entry.divisionId,
+      },
+    );
+    if (!opponent) {
+      // No one to pair with right now. Entry stays in friendly_offered; a
+      // future enqueue or admin pass can find it.
       return { matched: false };
+    }
+
+    // matchService.createMatchFromQueueEntries locks both entries FOR UPDATE,
+    // validates statuses (now relaxed to accept 'friendly_offered' too),
+    // snapshots ELO, inserts the match, and flips both entries to 'matched'
+    // atomically. Friendly stakes skip ELO updates at resolution.
+    const result = await this.matchService.createMatchFromQueueEntries({
+      entryAId: entry.id,
+      entryBId: opponent.id,
+      matchMode: 'score_only',
+      stakes: 'friendly',
     });
+    return { matched: true, matchId: result.match.id };
   }
 
   // ─── runMatchmakingPass ───────────────────────────────────────────────────

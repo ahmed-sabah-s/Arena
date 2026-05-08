@@ -97,7 +97,12 @@ export class MatchService {
       const eA = a.rows[0];
       const eB = b.rows[0];
       if (!eA || !eB) throw new NotFoundError('QueueEntry');
-      if (eA.status !== 'waiting' || eB.status !== 'waiting') {
+      // Accept entries in either 'waiting' or 'friendly_offered' status.
+      // friendly_offered entries are users who exceeded the ranked-find window
+      // and opted into matching anyone — they're still pairable, just transition
+      // to the same 'matched' end-state.
+      const PAIRABLE_STATUSES = new Set(['waiting', 'friendly_offered']);
+      if (!PAIRABLE_STATUSES.has(eA.status) || !PAIRABLE_STATUSES.has(eB.status)) {
         throw new ConflictError('QUEUE_ENTRY_ALREADY_RESOLVED');
       }
       if (
