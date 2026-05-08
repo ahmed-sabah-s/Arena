@@ -4,21 +4,24 @@
  * Each side's stat keeper logs events independently. After the match resolves,
  * we walk both logs and emit one row per logical event into matchStats:
  *  - VERIFIED  — both stat keepers logged a matching event (same side, same
- *                statKey, same playerId, minute within ±MINUTE_TOLERANCE).
+ *                statKey, same playerId, minute within toleranceMinutes).
  *  - UNVERIFIED — only one stat keeper logged the event.
  *
  * verified entries count toward season-leaderboard stats; unverified appear on
  * the match detail page but don't aggregate.
  *
- * The ±2-minute tolerance is a heuristic — clock drift between two phones
- * recording the same goal is realistic. Phase 6 referee-recorded stats use
- * the same logic but verificationStatus='referee_recorded'.
+ * The tolerance window is tuned via the
+ * `stat_reconciliation_tolerance_minutes` platformConfig key (default 2).
+ * The pure functions in this file accept it as a parameter to stay free of
+ * config IO; the caller (match.service.resolveAgreedMatch) reads the value
+ * via getConfigInteger and passes it through.
+ *
+ * Phase 6 referee-recorded stats use the same logic but with
+ * verificationStatus='referee_recorded'.
  */
 import type { CustomClient } from '../../db.js';
 import type { MatchSide, MatchStatLog, StatVerificationStatus } from './match.entity.js';
 import type { CreateMatchStatData, IMatchStatRepository } from './match.interface.js';
-
-const MINUTE_TOLERANCE = 2;
 
 interface ReconciliationGroup {
   side: MatchSide;
@@ -36,11 +39,12 @@ function groupKey(g: { side: MatchSide; statKey: string; playerId: string | null
 
 /**
  * Group stat logs into events. Two logs merge into one event when they have
- * the same (side, statKey, playerId) and their minutes are within MINUTE_TOLERANCE
- * of each other.
+ * the same (side, statKey, playerId) and their minutes are within
+ * `toleranceMinutes` of each other.
  */
 export function reconcileStatLogs(
   logs: MatchStatLog[],
+  toleranceMinutes: number,
 ): Array<{ stat: CreateMatchStatData; loggers: number }> {
   // Sort by minute (nulls last) so close-in-time events anchor early.
   const sorted = [...logs].sort((a, b) => {
@@ -59,7 +63,7 @@ export function reconcileStatLogs(
       // minute within tolerance (treat null as a hard mismatch unless both null)
       if (g.minute === null && log.minute === null) return true;
       if (g.minute === null || log.minute === null) return false;
-      return Math.abs(g.minute - log.minute) <= MINUTE_TOLERANCE;
+      return Math.abs(g.minute - log.minute) <= toleranceMinutes;
     });
     if (candidate) {
       candidate.loggers.add(log.loggedByUserId);
@@ -95,15 +99,17 @@ export function reconcileStatLogs(
 export const __internal = { groupKey };
 
 /**
- * Persist reconciled stats. Caller passes the already-fetched logs and the
- * transaction client so this stays a pure-side-effect-on-the-tx step.
+ * Persist reconciled stats. Caller passes the already-fetched logs, the
+ * tolerance window in minutes, and the transaction client so this stays a
+ * pure-side-effect-on-the-tx step.
  */
 export async function persistReconciledStats(
   logs: MatchStatLog[],
+  toleranceMinutes: number,
   statRepo: IMatchStatRepository,
   client: CustomClient,
 ): Promise<{ verified: number; unverified: number }> {
-  const reconciled = reconcileStatLogs(logs);
+  const reconciled = reconcileStatLogs(logs, toleranceMinutes);
   let verified = 0;
   let unverified = 0;
   for (const { stat, loggers } of reconciled) {

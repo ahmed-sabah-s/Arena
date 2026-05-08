@@ -29,6 +29,7 @@ import type {
 import type { TeamElo, PlayerElo } from '../elo/elo.entity.js';
 import { applyMatchEloAndStats, type MatchResolution } from './match.elo.js';
 import { persistReconciledStats } from './match.reconciliation.js';
+import { getConfigInteger } from '../../shared/config/platformConfig/index.js';
 import type { NotificationService } from '../notification/notification.service.js';
 
 interface QueueEntryRow {
@@ -538,7 +539,8 @@ export class MatchService {
     // Stat reconciliation for player_stats mode (idempotent: no-op if no logs).
     if (match.matchMode === 'player_stats') {
       const logs = await this.statLogRepo.findByMatch(match.id);
-      await persistReconciledStats(logs, this.statRepo, client);
+      const toleranceMinutes = await getConfigInteger('stat_reconciliation_tolerance_minutes');
+      await persistReconciledStats(logs, toleranceMinutes, this.statRepo, client);
     }
 
     const participants = await this.participantRepo.findByMatchId(match.id, client);

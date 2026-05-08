@@ -23,7 +23,7 @@ describe('reconcileStatLogs', () => {
       makeLog({ id: 'l1', loggedByUserId: 'k1', minute: 23, playerId: 'p1' }),
       makeLog({ id: 'l2', loggedByUserId: 'k2', minute: 24, playerId: 'p1' }),
     ];
-    const out = reconcileStatLogs(logs);
+    const out = reconcileStatLogs(logs, 2);
     expect(out).toHaveLength(1);
     expect(out[0].stat.verificationStatus).toBe('verified');
     expect(out[0].loggers).toBe(2);
@@ -31,7 +31,7 @@ describe('reconcileStatLogs', () => {
 
   it('only one keeper logged → unverified', () => {
     const logs = [makeLog({ id: 'l1', loggedByUserId: 'k1', minute: 23, playerId: 'p1' })];
-    const out = reconcileStatLogs(logs);
+    const out = reconcileStatLogs(logs, 2);
     expect(out[0].stat.verificationStatus).toBe('unverified');
   });
 
@@ -40,7 +40,7 @@ describe('reconcileStatLogs', () => {
       makeLog({ id: 'l1', loggedByUserId: 'k1', minute: 10, playerId: 'p1' }),
       makeLog({ id: 'l2', loggedByUserId: 'k1', minute: 50, playerId: 'p1' }),
     ];
-    const out = reconcileStatLogs(logs);
+    const out = reconcileStatLogs(logs, 2);
     expect(out).toHaveLength(2);
     expect(out.every((e) => e.stat.verificationStatus === 'unverified')).toBe(true);
   });
@@ -50,7 +50,7 @@ describe('reconcileStatLogs', () => {
       makeLog({ id: 'l1', loggedByUserId: 'k1', minute: 30, playerId: 'p1', side: 'A' }),
       makeLog({ id: 'l2', loggedByUserId: 'k2', minute: 30, playerId: 'p1', side: 'B' }),
     ];
-    const out = reconcileStatLogs(logs);
+    const out = reconcileStatLogs(logs, 2);
     expect(out).toHaveLength(2);
   });
 
@@ -59,7 +59,7 @@ describe('reconcileStatLogs', () => {
       makeLog({ id: 'l1', loggedByUserId: 'k1', minute: 30, playerId: 'p1', statKey: 'goals' }),
       makeLog({ id: 'l2', loggedByUserId: 'k2', minute: 30, playerId: 'p1', statKey: 'assists' }),
     ];
-    const out = reconcileStatLogs(logs);
+    const out = reconcileStatLogs(logs, 2);
     expect(out).toHaveLength(2);
   });
 
@@ -68,7 +68,7 @@ describe('reconcileStatLogs', () => {
       makeLog({ id: 'l1', loggedByUserId: 'k1', minute: 30, playerId: 'p1' }),
       makeLog({ id: 'l2', loggedByUserId: 'k2', minute: 30, playerId: 'p2' }),
     ];
-    const out = reconcileStatLogs(logs);
+    const out = reconcileStatLogs(logs, 2);
     expect(out).toHaveLength(2);
   });
 
@@ -77,7 +77,7 @@ describe('reconcileStatLogs', () => {
       makeLog({ id: 'l1', loggedByUserId: 'k1', minute: 30, playerId: 'p1' }),
       makeLog({ id: 'l2', loggedByUserId: 'k2', minute: 33, playerId: 'p1' }),
     ];
-    const out = reconcileStatLogs(logs);
+    const out = reconcileStatLogs(logs, 2);
     expect(out).toHaveLength(2);
     expect(out.every((e) => e.stat.verificationStatus === 'unverified')).toBe(true);
   });
@@ -87,8 +87,25 @@ describe('reconcileStatLogs', () => {
       makeLog({ id: 'l1', loggedByUserId: 'k1', minute: 30, playerId: 'p1' }),
       makeLog({ id: 'l2', loggedByUserId: 'k2', minute: 32, playerId: 'p1' }),
     ];
-    const out = reconcileStatLogs(logs);
+    const out = reconcileStatLogs(logs, 2);
     expect(out).toHaveLength(1);
     expect(out[0].stat.verificationStatus).toBe('verified');
+  });
+
+  it('tolerance is configurable: ±5 merges what ±2 would split', () => {
+    // Same input logs, different tolerance → different reconciliation results.
+    const logs = [
+      makeLog({ id: 'l1', loggedByUserId: 'k1', minute: 30, playerId: 'p1' }),
+      makeLog({ id: 'l2', loggedByUserId: 'k2', minute: 34, playerId: 'p1' }),
+    ];
+    // Default ±2: 4-minute gap exceeds tolerance → two unverified entries.
+    const tightResult = reconcileStatLogs(logs, 2);
+    expect(tightResult).toHaveLength(2);
+    expect(tightResult.every((e) => e.stat.verificationStatus === 'unverified')).toBe(true);
+
+    // Wider ±5: 4-minute gap fits → one verified entry.
+    const looseResult = reconcileStatLogs(logs, 5);
+    expect(looseResult).toHaveLength(1);
+    expect(looseResult[0].stat.verificationStatus).toBe('verified');
   });
 });
