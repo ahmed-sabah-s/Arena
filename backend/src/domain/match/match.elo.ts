@@ -146,8 +146,10 @@ interface ApplyEloUpdateInput {
 }
 
 async function applyEloUpdateForParticipant(input: ApplyEloUpdateInput): Promise<void> {
+  // eloChange / mmrChange are computed in the caller and folded into newElo / newMmr;
+  // we only need the absolute new values here.
   const {
-    participant, result, eloChange, mmrChange, newElo, newMmr,
+    participant, result, newElo, newMmr,
     match, client, teamEloRepo, playerEloRepo, calibrationMatchCount,
   } = input;
 
