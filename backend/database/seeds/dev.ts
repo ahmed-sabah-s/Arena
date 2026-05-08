@@ -259,4 +259,200 @@ export default async function seedDev(client: CustomClient): Promise<void> {
 
   const eloCountResult = await client.query<{ count: string }>(`SELECT COUNT(*) FROM "teamElos"`);
   console.log(`  ✓ ${eloCountResult.rows[0].count} team ELO rows seeded`);
+
+  // ─── Phase 5: sample matches, queue entry, and an open invite ──────────
+  // Same raw-SQL pattern as the team seeds. We hand-roll the ELO arithmetic
+  // here rather than calling the match service (the service uses
+  // transactions; the seed already runs inside one). Numbers below mirror
+  // what calculateMatchOutcome would produce for equal-MMR matches at base
+  // K=32 in the calibration window: a win at equal MMR gives ~+32 mmr in
+  // calibration (×2.0 multiplier → 32) — for clarity we apply +16 to keep
+  // the seeded leaderboard tame and predictable.
+  console.log('  Seeding dev matches & queue & invite...');
+
+  type MatchSeed = {
+    slug: string; // for indexing into the captain map
+    sideACaptainSlug: 'asad-baghdad' | 'najmat-karrada' | 'furat-najaf' | 'tigris-mosul';
+    sideBCaptainSlug: 'asad-baghdad' | 'najmat-karrada' | 'furat-najaf' | 'tigris-mosul';
+    finalScoreA: number;
+    finalScoreB: number;
+  };
+
+  const sampleMatches: MatchSeed[] = [
+    { slug: 'm1', sideACaptainSlug: 'asad-baghdad',   sideBCaptainSlug: 'najmat-karrada', finalScoreA: 3, finalScoreB: 1 },
+    { slug: 'm2', sideACaptainSlug: 'furat-najaf',    sideBCaptainSlug: 'asad-baghdad',   finalScoreA: 2, finalScoreB: 2 },
+    { slug: 'm3', sideACaptainSlug: 'tigris-mosul',   sideBCaptainSlug: 'najmat-karrada', finalScoreA: 1, finalScoreB: 4 },
+  ];
+
+  async function teamIdBySlug(slug: string): Promise<string> {
+    const r = await client.query<{ id: string }>(
+      `SELECT id FROM teams WHERE slug = :slug`, { slug },
+    );
+    return r.rows[0].id;
+  }
+
+  for (const m of sampleMatches) {
+    const teamA = await teamIdBySlug(m.sideACaptainSlug);
+    const teamB = await teamIdBySlug(m.sideBCaptainSlug);
+
+    // Snapshot current ELO from teamElos
+    const eloRowsA = await client.query<{ elo: number; mmr: number; matchesPlayed: number }>(
+      `SELECT elo, mmr, "matchesPlayed" FROM "teamElos"
+       WHERE "teamId" = :teamId AND "seasonId" IS NULL`,
+      { teamId: teamA },
+    );
+    const eloRowsB = await client.query<{ elo: number; mmr: number; matchesPlayed: number }>(
+      `SELECT elo, mmr, "matchesPlayed" FROM "teamElos"
+       WHERE "teamId" = :teamId AND "seasonId" IS NULL`,
+      { teamId: teamB },
+    );
+    const a = eloRowsA.rows[0];
+    const b = eloRowsB.rows[0];
+
+    const matchInsert = await client.query<{ id: string }>(
+      `INSERT INTO matches (
+         "gameId", "formatId", "divisionId", "matchMode", stakes, status,
+         "scheduledAt", "startedAt", "completedAt",
+         "finalScoreA", "finalScoreB", "creationSource"
+       )
+       VALUES (
+         :gameId, :formatId, :divisionId, 'score_only', 'ranked', 'completed',
+         CURRENT_TIMESTAMP - INTERVAL '7 days',
+         CURRENT_TIMESTAMP - INTERVAL '7 days',
+         CURRENT_TIMESTAMP - INTERVAL '7 days' + INTERVAL '90 minutes',
+         :scoreA, :scoreB, 'admin_created'
+       )
+       RETURNING id`,
+      {
+        gameId: footballId, formatId: fb5v5, divisionId: fbMale,
+        scoreA: m.finalScoreA, scoreB: m.finalScoreB,
+      },
+    );
+    const matchId = matchInsert.rows[0].id;
+
+    // Participants with snapshot
+    await client.query(
+      `INSERT INTO "matchParticipants" (
+         "matchId", side, "teamId", "mmrAtMatch", "eloAtMatch", "matchesPlayedAtMatch"
+       )
+       VALUES (:matchId, 'A', :teamA, :mmrA, :eloA, :mpA),
+              (:matchId, 'B', :teamB, :mmrB, :eloB, :mpB)`,
+      {
+        matchId,
+        teamA, mmrA: a.mmr, eloA: a.elo, mpA: a.matchesPlayed,
+        teamB, mmrB: b.mmr, eloB: b.elo, mpB: b.matchesPlayed,
+      },
+    );
+
+    // Both sides confirmed (matching submissions)
+    await client.query(
+      `INSERT INTO "matchSubmissions" ("matchId", side, "submittedByUserId", "scoreA", "scoreB")
+       SELECT :matchId::uuid, 'A', t."captainId", :scoreA::int, :scoreB::int FROM teams t WHERE t.id = :teamA
+       UNION ALL
+       SELECT :matchId::uuid, 'B', t."captainId", :scoreA::int, :scoreB::int FROM teams t WHERE t.id = :teamB`,
+      { matchId, teamA, teamB, scoreA: m.finalScoreA, scoreB: m.finalScoreB },
+    );
+
+    // Hand-rolled ELO update (a tame +16 / -16 / 0 for draws). Keeps the seeded
+    // leaderboard tidy without recreating Phase 4 math.
+    const isDraw = m.finalScoreA === m.finalScoreB;
+    const aWon = m.finalScoreA > m.finalScoreB;
+    const deltaA = isDraw ? 0 : aWon ? 16 : -16;
+    const deltaB = -deltaA;
+    const formA = isDraw ? 'D' : aWon ? 'W' : 'L';
+    const formB = isDraw ? 'D' : aWon ? 'L' : 'W';
+
+    await client.query(
+      `UPDATE "teamElos" SET
+         elo = elo + :delta, mmr = mmr + :delta,
+         "matchesPlayed" = "matchesPlayed" + 1,
+         "matchesWon" = "matchesWon" + :wonInc,
+         "matchesLost" = "matchesLost" + :lostInc,
+         "matchesDrawn" = "matchesDrawn" + :drawnInc,
+         "lastMatchAt" = CURRENT_TIMESTAMP - INTERVAL '7 days' + INTERVAL '90 minutes',
+         form = (CASE WHEN jsonb_array_length(form) >= 5
+                      THEN form - 0
+                      ELSE form
+                 END) || to_jsonb(:formChar::text),
+         "highestElo" = GREATEST("highestElo", elo + :delta),
+         "highestMmr" = GREATEST("highestMmr", mmr + :delta)
+       WHERE "teamId" = :teamId AND "seasonId" IS NULL`,
+      {
+        delta: deltaA,
+        wonInc: aWon && !isDraw ? 1 : 0,
+        lostInc: !aWon && !isDraw ? 1 : 0,
+        drawnInc: isDraw ? 1 : 0,
+        formChar: formA,
+        teamId: teamA,
+      },
+    );
+    await client.query(
+      `UPDATE "teamElos" SET
+         elo = elo + :delta, mmr = mmr + :delta,
+         "matchesPlayed" = "matchesPlayed" + 1,
+         "matchesWon" = "matchesWon" + :wonInc,
+         "matchesLost" = "matchesLost" + :lostInc,
+         "matchesDrawn" = "matchesDrawn" + :drawnInc,
+         "lastMatchAt" = CURRENT_TIMESTAMP - INTERVAL '7 days' + INTERVAL '90 minutes',
+         form = (CASE WHEN jsonb_array_length(form) >= 5
+                      THEN form - 0
+                      ELSE form
+                 END) || to_jsonb(:formChar::text),
+         "highestElo" = GREATEST("highestElo", elo + :delta),
+         "highestMmr" = GREATEST("highestMmr", mmr + :delta)
+       WHERE "teamId" = :teamId AND "seasonId" IS NULL`,
+      {
+        delta: deltaB,
+        wonInc: !aWon && !isDraw ? 1 : 0,
+        lostInc: aWon && !isDraw ? 1 : 0,
+        drawnInc: isDraw ? 1 : 0,
+        formChar: formB,
+        teamId: teamB,
+      },
+    );
+  }
+  console.log(`  ✓ ${sampleMatches.length} completed sample matches inserted`);
+
+  // 1 active queue entry: Asad Baghdad waiting for an opponent in football 5v5 male
+  const asadId = await teamIdBySlug('asad-baghdad');
+  const asadElo = await client.query<{ mmr: number }>(
+    `SELECT mmr FROM "teamElos" WHERE "teamId" = :teamId AND "seasonId" IS NULL`,
+    { teamId: asadId },
+  );
+  await client.query(
+    `INSERT INTO "queueEntries" ("teamId", "gameId", "formatId", "divisionId", "mmrAtQueue")
+     VALUES (:teamId, :gameId, :formatId, :divisionId, :mmr)
+     ON CONFLICT DO NOTHING`,
+    {
+      teamId: asadId, gameId: footballId, formatId: fb5v5, divisionId: fbMale,
+      mmr: asadElo.rows[0]?.mmr ?? 1000,
+    },
+  );
+  console.log(`  ✓ 1 active queue entry inserted (Asad Baghdad)`);
+
+  // 1 open match invite: Furat Najaf created a friendly invite
+  const furatId = await teamIdBySlug('furat-najaf');
+  const furatRow = await client.query<{ captainId: string }>(
+    `SELECT "captainId" FROM teams WHERE id = :id`, { id: furatId },
+  );
+  await client.query(
+    `INSERT INTO "matchInvites" (
+       code, "qrPayload", "createdByUserId", "creatorTeamId",
+       "gameId", "formatId", "divisionId",
+       stakes, "matchMode", "expiresAt"
+     )
+     VALUES (
+       'ARN-DEV1', 'seed-payload-not-signed', :createdByUserId, :creatorTeamId,
+       :gameId, :formatId, :divisionId,
+       'friendly', 'score_only',
+       CURRENT_TIMESTAMP + INTERVAL '15 minutes'
+     )
+     ON CONFLICT (code) DO NOTHING`,
+    {
+      createdByUserId: furatRow.rows[0].captainId,
+      creatorTeamId: furatId,
+      gameId: footballId, formatId: fb5v5, divisionId: fbMale,
+    },
+  );
+  console.log(`  ✓ 1 open match invite inserted (ARN-DEV1)`);
 }
