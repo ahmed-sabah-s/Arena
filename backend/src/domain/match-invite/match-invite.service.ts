@@ -1,4 +1,5 @@
 import { transaction, query } from '../../db.js';
+import type { CustomClient } from '../../db.js';
 import {
   AppError,
   AuthorizationError,
@@ -17,6 +18,7 @@ import type { MatchInvite } from './match-invite.entity.js';
 import type { IMatchInviteRepository } from './match-invite.interface.js';
 import type { MatchService } from '../match/match.service.js';
 import type { Match, MatchMode, MatchStakes } from '../match/match.entity.js';
+import type { NotificationService } from '../notification/notification.service.js';
 
 interface GameRow {
   id: string;
@@ -61,6 +63,7 @@ export class MatchInviteService {
   constructor(
     private readonly repo: IMatchInviteRepository,
     private readonly matchService: MatchService,
+    private readonly notificationService: NotificationService,
     private readonly jwtSecret: string,
   ) {}
 
@@ -196,16 +199,13 @@ export class MatchInviteService {
       const updated = await this.repo.setClaimed(invite.id, byUserId, claimedByTeamId, client);
 
       if (invite.stakes === 'friendly') {
-        // Friendly invites lock immediately on claim — create the match here.
-        // The match service opens its own transaction; we exit ours first by
-        // returning. To keep state consistent, we create the match AFTER this
-        // tx commits via a separate call. Simpler: return without creating
-        // here, and let the caller invoke confirmClaim — but the spec says
-        // friendly auto-locks on claim. We approximate by enqueuing a follow-up
-        // step done outside the tx (after commit).
-        // Approach: store the claim, return special status, and have the router
-        // immediately call confirmClaim on friendly stakes.
-        return { status: 'awaiting_creator_confirmation' as const, invite: updated };
+        // Friendly invites lock immediately on claim — match + creator-confirmed
+        // stamp + notifications all in this transaction. Ranked stakes still
+        // require an explicit confirmClaim call from the creator.
+        const { match, refreshedInvite } = await this.lockFriendlyMatch(
+          updated, byUserId, claimedByTeamId, client,
+        );
+        return { status: 'completed' as const, match, invite: refreshedInvite };
       }
 
       // Ranked invites: creator must confirm
@@ -213,14 +213,28 @@ export class MatchInviteService {
     });
   }
 
+  /**
+   * Idempotent: friendly invites are auto-confirmed in claimInvite, so calling
+   * confirmClaim on an already-confirmed invite returns the existing match
+   * instead of erroring. Lets clients call confirmClaim unconditionally
+   * without branching on stakes.
+   */
   async confirmClaim(inviteId: string, byUserId: string): Promise<{ match: Match; invite: MatchInvite }> {
     const invite = await this.repo.findById(inviteId);
     if (!invite) throw new NotFoundError('MatchInvite');
     if (invite.status !== 'claimed') throw new ConflictError('INVITE_NOT_CLAIMED');
-    if (invite.createdByUserId !== byUserId && invite.stakes === 'ranked') {
+    if (!invite.claimedByUserId) throw new ConflictError('INVITE_HAS_NO_CLAIMER');
+
+    // Idempotent path: invite already confirmed (friendly auto-confirm or a
+    // duplicate confirmClaim call). Return the existing match.
+    if (invite.creatorConfirmedAt && invite.matchId) {
+      const existing = await this.matchService.getMatch(invite.matchId);
+      return { match: existing.match, invite };
+    }
+
+    if (invite.stakes === 'ranked' && invite.createdByUserId !== byUserId) {
       throw new AuthorizationError('NOT_INVITE_CREATOR');
     }
-    if (!invite.claimedByUserId) throw new ConflictError('INVITE_HAS_NO_CLAIMER');
 
     const sideA = {
       teamId: invite.creatorTeamId,
@@ -231,30 +245,22 @@ export class MatchInviteService {
       userId: invite.claimedByTeamId ? null : invite.claimedByUserId,
     };
 
-    const { match } = await this.matchService.createMatchFromInvite({
-      inviteId: invite.id,
-      gameId: invite.gameId,
-      formatId: invite.formatId,
-      divisionId: invite.divisionId,
-      matchMode: invite.matchMode,
-      stakes: invite.stakes,
-      venueId: invite.venueId,
-      sideA,
-      sideB,
+    const { match } = await transaction(async (client) => {
+      const result = await this.matchService.createMatchFromInvite({
+        inviteId: invite.id,
+        gameId: invite.gameId,
+        formatId: invite.formatId,
+        divisionId: invite.divisionId,
+        matchMode: invite.matchMode,
+        stakes: invite.stakes,
+        venueId: invite.venueId,
+        sideA,
+        sideB,
+      }, client);
+      await this.repo.setCreatorConfirmed(invite.id, result.match.id, client);
+      await this.notifyMatchLocked(invite, result.match.id, client);
+      return result;
     });
-
-    // createMatchFromInvite already updates the invite status to 'claimed' and
-    // sets matchId. Stamp creatorConfirmedAt for ranked invites.
-    if (invite.stakes === 'ranked') {
-      await transaction(async (client) => {
-        await this.repo.setCreatorConfirmed(invite.id, match.id, client);
-      });
-    } else {
-      // Friendly: also stamp matchId now that we have one.
-      await transaction(async (client) => {
-        await this.repo.setCreatorConfirmed(invite.id, match.id, client);
-      });
-    }
 
     const refreshed = await this.repo.findById(invite.id);
     return { match, invite: refreshed ?? invite };
@@ -296,6 +302,70 @@ export class MatchInviteService {
   }
 
   // ─── helpers ──────────────────────────────────────────────────────────────
+
+  /**
+   * Atomic friendly-claim flow. Caller has already locked the invite for update
+   * and called setClaimed; we extend their transaction with match creation,
+   * creator-confirm stamp, and notifications.
+   */
+  private async lockFriendlyMatch(
+    claimed: MatchInvite,
+    claimerUserId: string,
+    claimerTeamId: string | null,
+    client: CustomClient,
+  ): Promise<{ match: Match; refreshedInvite: MatchInvite }> {
+    const sideA = {
+      teamId: claimed.creatorTeamId,
+      userId: claimed.creatorTeamId ? null : claimed.createdByUserId,
+    };
+    const sideB = {
+      teamId: claimerTeamId,
+      userId: claimerTeamId ? null : claimerUserId,
+    };
+
+    const { match } = await this.matchService.createMatchFromInvite({
+      inviteId: claimed.id,
+      gameId: claimed.gameId,
+      formatId: claimed.formatId,
+      divisionId: claimed.divisionId,
+      matchMode: claimed.matchMode,
+      stakes: claimed.stakes,
+      venueId: claimed.venueId,
+      sideA,
+      sideB,
+    }, client);
+
+    const refreshedInvite = await this.repo.setCreatorConfirmed(claimed.id, match.id, client);
+    await this.notifyMatchLocked(claimed, match.id, client);
+    return { match, refreshedInvite };
+  }
+
+  /**
+   * Send "match_locked" notifications to both creator and claimer of an invite.
+   * For team games the stored userIds are the captains, so this naturally
+   * targets both captains; for individual games it targets the players directly.
+   */
+  private async notifyMatchLocked(
+    invite: MatchInvite,
+    matchId: string,
+    client: CustomClient,
+  ): Promise<void> {
+    const recipients = new Set<string>();
+    recipients.add(invite.createdByUserId);
+    if (invite.claimedByUserId) recipients.add(invite.claimedByUserId);
+    const payload = {
+      matchId,
+      inviteId: invite.id,
+      stakes: invite.stakes,
+      matchMode: invite.matchMode,
+    };
+    for (const userId of recipients) {
+      await this.notificationService.enqueue(
+        { userId, type: 'match_locked', payload },
+        client,
+      );
+    }
+  }
 
   private async resolveByCodeOrPayload(input: {
     code?: string;

@@ -176,64 +176,81 @@ export class MatchService {
 
   // ─── createMatchFromInvite ─────────────────────────────────────────────────
 
+  /**
+   * Inserts the match + participants and stamps the invite with `matchId`.
+   *
+   * Optionally accepts an existing transaction `client` so callers running
+   * their own transaction (e.g. MatchInviteService.claimInvite for friendly
+   * stakes) can include this work atomically. Without a client, opens its
+   * own transaction.
+   */
   async createMatchFromInvite(
     input: CreateMatchFromInviteInput,
+    client?: CustomClient,
   ): Promise<{ match: Match }> {
     if (input.matchMode === 'refereed') {
       throw new AppError('NOT_IMPLEMENTED_UNTIL_PHASE_6', 501);
     }
-    return await transaction(async (client) => {
-      const sideASnap = await this.snapshotEloForSide(
-        input.sideA, input.gameId, input.formatId, input.divisionId, client,
-      );
-      const sideBSnap = await this.snapshotEloForSide(
-        input.sideB, input.gameId, input.formatId, input.divisionId, client,
-      );
+    if (client) {
+      return this.runCreateMatchFromInvite(input, client);
+    }
+    return await transaction((c) => this.runCreateMatchFromInvite(input, c));
+  }
 
-      const match = await this.matchRepo.create(
-        {
-          gameId: input.gameId,
-          formatId: input.formatId,
-          divisionId: input.divisionId,
-          seasonId: null,
-          matchMode: input.matchMode,
-          stakes: input.stakes,
-          venueId: input.venueId,
-          scheduledAt: new Date(),
-          creationSource: 'qr_invite',
-        },
-        client,
-      );
+  private async runCreateMatchFromInvite(
+    input: CreateMatchFromInviteInput,
+    client: CustomClient,
+  ): Promise<{ match: Match }> {
+    const sideASnap = await this.snapshotEloForSide(
+      input.sideA, input.gameId, input.formatId, input.divisionId, client,
+    );
+    const sideBSnap = await this.snapshotEloForSide(
+      input.sideB, input.gameId, input.formatId, input.divisionId, client,
+    );
 
-      await this.participantRepo.create(
-        {
-          matchId: match.id, side: 'A',
-          teamId: input.sideA.teamId, userId: input.sideA.userId,
-          mmrAtMatch: sideASnap.mmr, eloAtMatch: sideASnap.elo,
-          matchesPlayedAtMatch: sideASnap.matchesPlayed,
-        },
-        client,
-      );
-      await this.participantRepo.create(
-        {
-          matchId: match.id, side: 'B',
-          teamId: input.sideB.teamId, userId: input.sideB.userId,
-          mmrAtMatch: sideBSnap.mmr, eloAtMatch: sideBSnap.elo,
-          matchesPlayedAtMatch: sideBSnap.matchesPlayed,
-        },
-        client,
-      );
+    const match = await this.matchRepo.create(
+      {
+        gameId: input.gameId,
+        formatId: input.formatId,
+        divisionId: input.divisionId,
+        seasonId: null,
+        matchMode: input.matchMode,
+        stakes: input.stakes,
+        venueId: input.venueId,
+        scheduledAt: new Date(),
+        creationSource: 'qr_invite',
+      },
+      client,
+    );
 
-      // Mark invite claimed
-      await client.query(
-        `UPDATE "matchInvites"
-         SET status = 'claimed', "matchId" = :matchId
-         WHERE id = :inviteId`,
-        { matchId: match.id, inviteId: input.inviteId },
-      );
+    await this.participantRepo.create(
+      {
+        matchId: match.id, side: 'A',
+        teamId: input.sideA.teamId, userId: input.sideA.userId,
+        mmrAtMatch: sideASnap.mmr, eloAtMatch: sideASnap.elo,
+        matchesPlayedAtMatch: sideASnap.matchesPlayed,
+      },
+      client,
+    );
+    await this.participantRepo.create(
+      {
+        matchId: match.id, side: 'B',
+        teamId: input.sideB.teamId, userId: input.sideB.userId,
+        mmrAtMatch: sideBSnap.mmr, eloAtMatch: sideBSnap.elo,
+        matchesPlayedAtMatch: sideBSnap.matchesPlayed,
+      },
+      client,
+    );
 
-      return { match };
-    });
+    // Mark invite claimed (idempotent if already claimed by an outer transaction).
+    await client.query(
+      `UPDATE "matchInvites"
+       SET status = 'claimed', "matchId" = :matchId
+       WHERE id = :inviteId`,
+      { matchId: match.id, inviteId: input.inviteId },
+    );
+
+    return { match };
   }
 
   // ─── startMatch / designateStatKeeper ─────────────────────────────────────

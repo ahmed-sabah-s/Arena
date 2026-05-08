@@ -14,11 +14,13 @@ import { config } from '../../shared/config';
 import { MatchInviteRepository } from './match-invite.repository.js';
 import { MatchInviteService } from './match-invite.service.js';
 import { matchService } from '../match';
+import { notificationService } from '../notification';
 
 const repo = new MatchInviteRepository();
 export const matchInviteService = new MatchInviteService(
   repo,
   matchService,
+  notificationService,
   config.JWT_SECRET,
 );
 
