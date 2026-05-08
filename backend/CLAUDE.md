@@ -44,6 +44,35 @@ const result = await transaction(async (client) => {
 - Always destructure a single row: `query()` returns `T[]`.
 - `transaction()` runs queries inside `client` with automatic COMMIT on success or ROLLBACK on error.
 
+## JSONB Parameter Binding
+
+**Always wrap JSONB values with `JSON.stringify(...)` before passing them to `query()` / `client.query()`.** The pg driver does not serialise JS objects or arrays into JSONB on its own — it stringifies them as `[object Object]` (objects) or comma-joins (arrays) and Postgres rejects the value or stores garbage.
+
+```typescript
+// ✅ correct — stringify on the way in
+await query(
+  `INSERT INTO notifications ("userId", type, payload)
+   VALUES (:userId, :type, :payload)`,
+  {
+    userId,
+    type: 'match_locked',
+    payload: JSON.stringify({ matchId, opponentName }),
+  },
+);
+
+// ❌ wrong — pg can't serialise this
+await query(`... VALUES (:userId, :type, :payload)`, {
+  payload: { matchId, opponentName },
+});
+```
+
+- The destination column's `JSONB` type is enough for Postgres to parse the string; you don't need a `::jsonb` cast in the SQL.
+- `null` passes through fine — use `JSON.stringify(value ?? null)` so an absent optional becomes JSONB `null`, not the string `"null"` of an undefined.
+- **Reads are the inverse:** the pg driver returns JSONB columns as already-parsed JS values. Never call `JSON.parse()` on them — that double-decodes and crashes on objects.
+- For columns whose shape varies, type the field as a discriminated union (see TypeScript Discipline below) rather than `any`.
+
+Existing examples in the codebase: [match.repository.ts](backend/src/domain/match/match.repository.ts) (`statValue`), [notification.repository.ts](backend/src/domain/notification/notification.repository.ts) (`payload`), [audit.repository.ts](backend/src/domain/audit/audit.repository.ts) (`details`), [elo.repository.ts](backend/src/domain/elo/elo.repository.ts) (`form`).
+
 ## SQL Conventions
 
 - camelCase quoted identifiers: `"userId"`, `"emailVerified"`.
