@@ -219,6 +219,35 @@ export class MatchmakingService {
 
   // ─── runMatchmakingPass ───────────────────────────────────────────────────
 
+  /**
+   * Pair waiting queue entries inside a (game, format, division) scope.
+   *
+   * Pairing is **strict FIFO** at both levels:
+   *   - The outer loop walks `entries` in `queuedAt ASC` order, so the
+   *     oldest-waiting entry gets the first chance to be paired.
+   *   - The inner partner search starts from `i + 1` (the next-oldest still
+   *     unmatched entry) and **breaks on the first MMR-compatible opponent**.
+   *     We deliberately do NOT scan the whole list to pick the closest-MMR
+   *     opponent, because doing so would let mid-pool entries jump in front of
+   *     someone who has been waiting longer and starve them.
+   *
+   * Compatibility is `|mmr_a - mmr_b| <= computeAllowedMmrGap(waitMinutesA,
+   * sparseMode, ...)`, where the gap widens with the older entry's wait time.
+   *
+   * Sparse vs. mature mode is decided per-pass from the count of `teamElos`
+   * rows in the scope (regardless of which entries are queued right now): a
+   * sparse pool uses a more permissive widening curve to account for thin
+   * matchmaking populations.
+   *
+   * After the pairing pass, any still-waiting entry whose wait exceeds
+   * `queue_friendly_after_minutes` is flipped to `friendly_offered` so its
+   * owner can opt into "match me with anyone" via `acceptFriendly`.
+   *
+   * Pairs are persisted via `MatchService.createMatchFromQueueEntries`, which
+   * locks both entries `FOR UPDATE` and validates statuses, so concurrent
+   * passes losing a race produce a recoverable conflict that this method
+   * logs and skips rather than aborting the rest of the pass.
+   */
   async runMatchmakingPass(scope: {
     gameId: string;
     formatId: string;
@@ -267,9 +296,9 @@ export class MatchmakingService {
         waitMinutesA, sparseMode, sparseConfig, matureConfig,
       );
 
-      // Find FIFO-compatible opponent. Pure FIFO pairing — pick the oldest
-      // partner whose mmr is within the allowed gap. Deliberate (avoids
-      // starvation; consider closest-match later if pairings look bad).
+      // Pick the oldest still-unmatched opponent whose MMR is inside the
+      // allowed gap and break — see the runMatchmakingPass docstring for why
+      // we don't scan the rest of the list to pick a closer-MMR partner.
       let partnerIndex = -1;
       for (let j = i + 1; j < entries.length; j += 1) {
         const b = entries[j];
