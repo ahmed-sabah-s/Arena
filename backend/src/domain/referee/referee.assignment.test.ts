@@ -264,7 +264,7 @@ describe('RefereeAssignmentService.respondToAssignment', () => {
   it('accept transitions assigned → accepted', async () => {
     const deps = makeDeps();
     const txClient = { query: vi.fn(async () => ({ rows: [] })) };
-    vi.mocked(transaction).mockImplementationOnce(async (cb) => cb(txClient));
+    vi.mocked(transaction).mockImplementationOnce(async (cb) => cb(txClient as unknown as Parameters<typeof cb>[0]));
     vi.mocked(deps.assignmentRepo.findByIdForUpdate).mockResolvedValue(makeAssignment());
     const svc = new RefereeAssignmentService(deps);
     await svc.respondToAssignment('ra-1', true, REF_ID);
@@ -276,7 +276,7 @@ describe('RefereeAssignmentService.respondToAssignment', () => {
   it('decline transitions assigned → declined and notifies admins', async () => {
     const deps = makeDeps();
     const txClient = { query: vi.fn(async () => ({ rows: [] })) };
-    vi.mocked(transaction).mockImplementationOnce(async (cb) => cb(txClient));
+    vi.mocked(transaction).mockImplementationOnce(async (cb) => cb(txClient as unknown as Parameters<typeof cb>[0]));
     vi.mocked(deps.assignmentRepo.findByIdForUpdate).mockResolvedValue(makeAssignment());
     const svc = new RefereeAssignmentService(deps);
     await svc.respondToAssignment('ra-1', false, REF_ID, 'sick');
@@ -289,7 +289,7 @@ describe('RefereeAssignmentService.respondToAssignment', () => {
   it('rejects when caller is not the assigned referee', async () => {
     const deps = makeDeps();
     const txClient = { query: vi.fn(async () => ({ rows: [] })) };
-    vi.mocked(transaction).mockImplementationOnce(async (cb) => cb(txClient));
+    vi.mocked(transaction).mockImplementationOnce(async (cb) => cb(txClient as unknown as Parameters<typeof cb>[0]));
     vi.mocked(deps.assignmentRepo.findByIdForUpdate).mockResolvedValue(makeAssignment());
     const svc = new RefereeAssignmentService(deps);
     await expect(svc.respondToAssignment('ra-1', true, 'u-stranger'))
@@ -301,7 +301,7 @@ describe('RefereeAssignmentService.checkIn', () => {
   it('transitions accepted → checked_in', async () => {
     const deps = makeDeps();
     const txClient = { query: vi.fn(async () => ({ rows: [] })) };
-    vi.mocked(transaction).mockImplementationOnce(async (cb) => cb(txClient));
+    vi.mocked(transaction).mockImplementationOnce(async (cb) => cb(txClient as unknown as Parameters<typeof cb>[0]));
     vi.mocked(deps.assignmentRepo.findByIdForUpdate).mockResolvedValue(
       makeAssignment({ status: 'accepted' }),
     );
@@ -322,7 +322,7 @@ describe('RefereeAssignmentService.triggerAutoPromotion', () => {
   it('promotes the oldest checked-in assistant when main has not checked in', async () => {
     const deps = makeDeps();
     const txClient = { query: vi.fn(async () => ({ rows: [] })) };
-    vi.mocked(transaction).mockImplementationOnce(async (cb) => cb(txClient));
+    vi.mocked(transaction).mockImplementationOnce(async (cb) => cb(txClient as unknown as Parameters<typeof cb>[0]));
     vi.mocked(deps.assignmentRepo.findActiveMainByMatch).mockResolvedValue(
       makeAssignment({ id: 'ra-main', refereeUserId: REF_ID, status: 'accepted' }),
     );
@@ -347,7 +347,7 @@ describe('RefereeAssignmentService.triggerAutoPromotion', () => {
   it('applies first-offense penalty when this is the only no_show in window', async () => {
     const deps = makeDeps();
     const txClient = { query: vi.fn(async () => ({ rows: [] })) };
-    vi.mocked(transaction).mockImplementationOnce(async (cb) => cb(txClient));
+    vi.mocked(transaction).mockImplementationOnce(async (cb) => cb(txClient as unknown as Parameters<typeof cb>[0]));
     vi.mocked(deps.assignmentRepo.findActiveMainByMatch).mockResolvedValue(
       makeAssignment({ id: 'ra-main', refereeUserId: REF_ID, status: 'accepted' }),
     );
@@ -365,7 +365,7 @@ describe('RefereeAssignmentService.triggerAutoPromotion', () => {
   it('applies repeat-offense penalty when prior no_show exists in window', async () => {
     const deps = makeDeps();
     const txClient = { query: vi.fn(async () => ({ rows: [] })) };
-    vi.mocked(transaction).mockImplementationOnce(async (cb) => cb(txClient));
+    vi.mocked(transaction).mockImplementationOnce(async (cb) => cb(txClient as unknown as Parameters<typeof cb>[0]));
     vi.mocked(deps.assignmentRepo.findActiveMainByMatch).mockResolvedValue(
       makeAssignment({ id: 'ra-main', refereeUserId: REF_ID, status: 'accepted' }),
     );
@@ -383,7 +383,7 @@ describe('RefereeAssignmentService.triggerAutoPromotion', () => {
   it('no-ops if main has already checked in', async () => {
     const deps = makeDeps();
     const txClient = { query: vi.fn(async () => ({ rows: [] })) };
-    vi.mocked(transaction).mockImplementationOnce(async (cb) => cb(txClient));
+    vi.mocked(transaction).mockImplementationOnce(async (cb) => cb(txClient as unknown as Parameters<typeof cb>[0]));
     vi.mocked(deps.assignmentRepo.findActiveMainByMatch).mockResolvedValue(
       makeAssignment({ id: 'ra-main', refereeUserId: REF_ID, status: 'checked_in' }),
     );
@@ -396,7 +396,7 @@ describe('RefereeAssignmentService.triggerAutoPromotion', () => {
   it('no-ops when no checked-in assistant is available', async () => {
     const deps = makeDeps();
     const txClient = { query: vi.fn(async () => ({ rows: [] })) };
-    vi.mocked(transaction).mockImplementationOnce(async (cb) => cb(txClient));
+    vi.mocked(transaction).mockImplementationOnce(async (cb) => cb(txClient as unknown as Parameters<typeof cb>[0]));
     vi.mocked(deps.assignmentRepo.findActiveMainByMatch).mockResolvedValue(
       makeAssignment({ id: 'ra-main', refereeUserId: REF_ID, status: 'accepted' }),
     );
@@ -413,7 +413,7 @@ describe('RefereeAssignmentService.reclaimMainSlot', () => {
     const txClient = {
       query: vi.fn(async () => ({ rows: [makeAssignment({ id: 'ra-main', status: 'checked_in' })] })),
     };
-    vi.mocked(transaction).mockImplementationOnce(async (cb) => cb(txClient));
+    vi.mocked(transaction).mockImplementationOnce(async (cb) => cb(txClient as unknown as Parameters<typeof cb>[0]));
     vi.mocked(deps.assignmentRepo.findByIdForUpdate).mockResolvedValue(
       makeAssignment({ id: 'ra-main', refereeUserId: REF_ID, status: 'no_show', role: 'main' }),
     );
@@ -434,7 +434,7 @@ describe('RefereeAssignmentService.reclaimMainSlot', () => {
   it('rejects when match has already started', async () => {
     const deps = makeDeps();
     const txClient = { query: vi.fn(async () => ({ rows: [] })) };
-    vi.mocked(transaction).mockImplementationOnce(async (cb) => cb(txClient));
+    vi.mocked(transaction).mockImplementationOnce(async (cb) => cb(txClient as unknown as Parameters<typeof cb>[0]));
     vi.mocked(deps.assignmentRepo.findByIdForUpdate).mockResolvedValue(
       makeAssignment({ id: 'ra-main', refereeUserId: REF_ID, status: 'no_show', role: 'main' }),
     );
@@ -454,7 +454,7 @@ describe('RefereeAssignmentService.submitRefereedResult', () => {
   it('writes referee_recorded stats, applies ELO, marks assignments completed', async () => {
     const deps = makeDeps();
     const txClient = { query: vi.fn(async () => ({ rows: [] })) };
-    vi.mocked(transaction).mockImplementationOnce(async (cb) => cb(txClient));
+    vi.mocked(transaction).mockImplementationOnce(async (cb) => cb(txClient as unknown as Parameters<typeof cb>[0]));
     vi.mocked(deps.matchRepo.findByIdForUpdate).mockResolvedValue(makeMatch({ status: 'active' }));
     vi.mocked(deps.assignmentRepo.findActiveMainByMatch).mockResolvedValue(
       makeAssignment({ refereeUserId: REF_ID, status: 'checked_in' }),
@@ -487,7 +487,7 @@ describe('RefereeAssignmentService.submitRefereedResult', () => {
   it('rejects when caller is not the active main referee', async () => {
     const deps = makeDeps();
     const txClient = { query: vi.fn(async () => ({ rows: [] })) };
-    vi.mocked(transaction).mockImplementationOnce(async (cb) => cb(txClient));
+    vi.mocked(transaction).mockImplementationOnce(async (cb) => cb(txClient as unknown as Parameters<typeof cb>[0]));
     vi.mocked(deps.matchRepo.findByIdForUpdate).mockResolvedValue(makeMatch({ status: 'active' }));
     vi.mocked(deps.assignmentRepo.findActiveMainByMatch).mockResolvedValue(
       makeAssignment({ refereeUserId: OPP_REF_ID, status: 'checked_in' }),
@@ -515,7 +515,7 @@ describe('RefereeAssignmentService.flagReferee', () => {
     }) as unknown as typeof query);
     const deps = makeDeps();
     const txClient = { query: vi.fn(async () => ({ rows: [] })) };
-    vi.mocked(transaction).mockImplementationOnce(async (cb) => cb(txClient));
+    vi.mocked(transaction).mockImplementationOnce(async (cb) => cb(txClient as unknown as Parameters<typeof cb>[0]));
     vi.mocked(deps.matchRepo.findById).mockResolvedValue(makeMatch({ status: 'completed' }));
     vi.mocked(deps.assignmentRepo.findActiveAssignmentForReferee).mockResolvedValue(
       makeAssignment({ refereeUserId: REF_ID }),
@@ -543,7 +543,7 @@ describe('RefereeAssignmentService.flagReferee', () => {
     }) as unknown as typeof query);
     const deps = makeDeps();
     const txClient = { query: vi.fn(async () => ({ rows: [] })) };
-    vi.mocked(transaction).mockImplementationOnce(async (cb) => cb(txClient));
+    vi.mocked(transaction).mockImplementationOnce(async (cb) => cb(txClient as unknown as Parameters<typeof cb>[0]));
     vi.mocked(deps.matchRepo.findById).mockResolvedValue(makeMatch({ status: 'completed' }));
     vi.mocked(deps.assignmentRepo.findActiveAssignmentForReferee).mockResolvedValue(
       makeAssignment({ refereeUserId: REF_ID }),
@@ -567,7 +567,7 @@ describe('RefereeAssignmentService.flagReferee', () => {
     }) as unknown as typeof query);
     const deps = makeDeps();
     const txClient = { query: vi.fn(async () => ({ rows: [] })) };
-    vi.mocked(transaction).mockImplementationOnce(async (cb) => cb(txClient));
+    vi.mocked(transaction).mockImplementationOnce(async (cb) => cb(txClient as unknown as Parameters<typeof cb>[0]));
     vi.mocked(deps.matchRepo.findById).mockResolvedValue(makeMatch({ status: 'completed' }));
     vi.mocked(deps.assignmentRepo.findActiveAssignmentForReferee).mockResolvedValue(
       makeAssignment({ refereeUserId: REF_ID }),

@@ -543,14 +543,22 @@ export class RefereeCaptainFlagRepository implements IRefereeCaptainFlagReposito
     );
   }
 
-  async countByRefereeInWindow(refereeUserId: string, sinceDays: number): Promise<number> {
-    const [row] = await query<{ count: string }>(
+  async countByRefereeInWindow(
+    refereeUserId: string,
+    sinceDays: number,
+    client?: CustomClient,
+  ): Promise<number> {
+    // Optional client lets the assignment service count *including the
+    // just-inserted flag* from inside its insertion transaction. Without it,
+    // the count uses a separate connection and only sees committed rows.
+    const rows = await exec<{ count: string }>(
+      client,
       `SELECT COUNT(*) AS count
        FROM "refereeCaptainFlags"
        WHERE "refereeUserId" = :refereeUserId
          AND "createdAt" >= CURRENT_TIMESTAMP - (:sinceDays || ' days')::interval`,
       { refereeUserId, sinceDays },
     );
-    return Number.parseInt(row?.count ?? '0', 10);
+    return Number.parseInt(rows[0]?.count ?? '0', 10);
   }
 }

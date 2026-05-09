@@ -116,5 +116,5 @@ export interface IRefereeCaptainFlagRepository {
   create(input: CreateCaptainFlagData, client?: CustomClient): Promise<RefereeCaptainFlag>;
   findByReferee(refereeUserId: string): Promise<RefereeCaptainFlag[]>;
   findOpenByMatch(matchId: string): Promise<RefereeCaptainFlag[]>;
-  countByRefereeInWindow(refereeUserId: string, sinceDays: number): Promise<number>;
+  countByRefereeInWindow(refereeUserId: string, sinceDays: number, client?: CustomClient): Promise<number>;
 }

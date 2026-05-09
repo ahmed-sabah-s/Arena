@@ -498,7 +498,7 @@ export class RefereeAssignmentService {
       const threshold = await getConfigInteger('referee_flag_review_threshold');
       const windowDays = await getConfigInteger('referee_flag_window_days');
       const flagsInWindow = await this.deps.flagRepo.countByRefereeInWindow(
-        refereeUserId, windowDays,
+        refereeUserId, windowDays, client,
       );
       if (flagsInWindow >= threshold) {
         await this.notifyAdmins('referee_flag_threshold_reached', {
