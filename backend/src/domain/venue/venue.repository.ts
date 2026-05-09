@@ -193,9 +193,23 @@ export class VenueRepository implements IVenueRepository {
 
 // ─── Game Config ────────────────────────────────────────────────────────────
 
+// pg returns BIGINT priceAmount as string; coerce on read.
+type VenueGameConfigRow = Omit<VenueGameConfig, 'priceAmount'> & {
+  priceAmount: string | number;
+};
+
+function normaliseVenueGameConfig(row: VenueGameConfigRow): VenueGameConfig {
+  return {
+    ...row,
+    priceAmount: typeof row.priceAmount === 'string'
+      ? Number.parseFloat(row.priceAmount)
+      : row.priceAmount,
+  };
+}
+
 export class VenueGameConfigRepository implements IVenueGameConfigRepository {
   async upsert(input: UpsertVenueGameConfigData, client?: CustomClient): Promise<VenueGameConfig> {
-    const rows = await exec<VenueGameConfig>(
+    const rows = await exec<VenueGameConfigRow>(
       client,
       `INSERT INTO "venueGameConfigs" (
          "venueId", "gameId", "pricingModel", "priceAmount", "priceCurrency",
@@ -217,16 +231,17 @@ export class VenueGameConfigRepository implements IVenueGameConfigRepository {
       { ...input },
     );
     if (!rows[0]) throw new AppError('Failed to upsert venue game config', 500);
-    return rows[0];
+    return normaliseVenueGameConfig(rows[0]);
   }
 
   async findByVenue(venueId: string): Promise<VenueGameConfig[]> {
-    return query<VenueGameConfig>(
+    const rows = await query<VenueGameConfigRow>(
       `SELECT * FROM "venueGameConfigs"
        WHERE "venueId" = :venueId
        ORDER BY "createdAt" ASC`,
       { venueId },
     );
+    return rows.map(normaliseVenueGameConfig);
   }
 
   async findActiveByVenueAndGame(
@@ -234,14 +249,14 @@ export class VenueGameConfigRepository implements IVenueGameConfigRepository {
     gameId: string,
     client?: CustomClient,
   ): Promise<VenueGameConfig | null> {
-    const rows = await exec<VenueGameConfig>(
+    const rows = await exec<VenueGameConfigRow>(
       client,
       `SELECT * FROM "venueGameConfigs"
        WHERE "venueId" = :venueId AND "gameId" = :gameId AND "isActive" = true
        LIMIT 1`,
       { venueId, gameId },
     );
-    return rows[0] ?? null;
+    return rows[0] ? normaliseVenueGameConfig(rows[0]) : null;
   }
 }
 

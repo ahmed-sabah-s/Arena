@@ -25,17 +25,26 @@ async function exec<T extends pg.QueryResultRow>(
   return query<T>(sql, params);
 }
 
-// pg returns DECIMAL columns as strings; coerce commissionPercentSnapshot.
-type BookingRow = Omit<VenueBooking, 'commissionPercentSnapshot'> & {
+// pg returns BIGINT and DECIMAL columns as strings; coerce numeric fields on read.
+type BookingRow = Omit<
+  VenueBooking,
+  'priceAmount' | 'commissionAmount' | 'commissionPercentSnapshot'
+> & {
+  priceAmount: string | number;
+  commissionAmount: string | number;
   commissionPercentSnapshot: string | number;
 };
+
+function toNumber(v: string | number): number {
+  return typeof v === 'string' ? Number.parseFloat(v) : v;
+}
 
 function normaliseBooking(row: BookingRow): VenueBooking {
   return {
     ...row,
-    commissionPercentSnapshot: typeof row.commissionPercentSnapshot === 'string'
-      ? Number.parseFloat(row.commissionPercentSnapshot)
-      : row.commissionPercentSnapshot,
+    priceAmount: toNumber(row.priceAmount),
+    commissionAmount: toNumber(row.commissionAmount),
+    commissionPercentSnapshot: toNumber(row.commissionPercentSnapshot),
   };
 }
 
