@@ -11,8 +11,8 @@ vi.mock('../../shared/config/platformConfig/index.js', () => ({
     return 0;
   }),
   getConfigNumber: vi.fn(async (key: string) => {
-    if (key === 'referee_first_offense_penalty') return 0.5;
-    if (key === 'referee_repeat_offense_penalty') return 1.0;
+    if (key === 'referee_first_offense_penalty') return 0.2;
+    if (key === 'referee_repeat_offense_penalty') return 0.5;
     return 0;
   }),
   getConfigBoolean: vi.fn(async () => false),
@@ -358,7 +358,7 @@ describe('RefereeAssignmentService.triggerAutoPromotion', () => {
     const svc = new RefereeAssignmentService(deps);
     await svc.triggerAutoPromotion(MATCH_ID, ADMIN_ID);
     expect(deps.profileRepo.applyReliabilityDelta).toHaveBeenCalledWith(
-      REF_ID, -0.5, expect.anything(),
+      REF_ID, -0.2, expect.anything(),
     );
   });
 
@@ -376,7 +376,7 @@ describe('RefereeAssignmentService.triggerAutoPromotion', () => {
     const svc = new RefereeAssignmentService(deps);
     await svc.triggerAutoPromotion(MATCH_ID, ADMIN_ID);
     expect(deps.profileRepo.applyReliabilityDelta).toHaveBeenCalledWith(
-      REF_ID, -1.0, expect.anything(),
+      REF_ID, -0.5, expect.anything(),
     );
   });
 

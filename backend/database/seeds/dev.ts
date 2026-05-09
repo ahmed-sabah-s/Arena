@@ -455,4 +455,149 @@ export default async function seedDev(client: CustomClient): Promise<void> {
     },
   );
   console.log(`  ✓ 1 open match invite inserted (ARN-DEV1)`);
+
+  // ─── Phase 6: referees, certifications, and a scheduled refereed match ──
+  // Pick two existing users to double-up as referees: the admin (already has
+  // admin role) and Sara (female, captains no football team — clean conflict
+  // surface). Both are certified for football; admin is also certified for
+  // chess to exercise the multi-game cert path.
+  console.log('  Seeding dev referees...');
+
+  // 1. Ensure the `referee` role exists, then grant it to admin and Sara.
+  await client.query(
+    `INSERT INTO role (name, description) VALUES ('referee', 'Match official')
+     ON CONFLICT (name) DO NOTHING`,
+  );
+  const sara = await userIdByPhone('+9647500000002');
+  await client.query(
+    `INSERT INTO "userRole" ("userId", "roleId")
+     SELECT u.id, r.id
+     FROM "user" u CROSS JOIN role r
+     WHERE u.id = ANY(:userIds::uuid[]) AND r.name = 'referee'
+     ON CONFLICT ("userId", "roleId") DO NOTHING`,
+    { userIds: [adminId, sara] },
+  );
+
+  // 2. Referee profiles — bios + Baghdad as base city, both accepting work.
+  await client.query(
+    `INSERT INTO "refereeProfiles" ("userId", "baseCity", bio)
+     VALUES (:adminId, 'Baghdad', 'Senior platform admin moonlighting as a referee.'),
+            (:saraId,  'Baghdad', 'Experienced football referee, FIFA-licensed equivalent.')
+     ON CONFLICT ("userId") DO NOTHING`,
+    { adminId, saraId: sara },
+  );
+
+  // 3. Certifications. Both for football; admin also for chess.
+  await client.query(
+    `INSERT INTO "refereeCertifications" ("userId", "gameId", "certifiedByUserId", notes)
+     VALUES (:adminId, :footballId, :adminId, 'self-cert (admin bootstrap)'),
+            (:saraId,  :footballId, :adminId, 'verified by admin')`,
+    { adminId, saraId: sara, footballId },
+  );
+  // Chess cert for admin (idempotent guard via partial unique on active rows).
+  const chessLookup = await client.query<{ id: string }>(
+    `SELECT id FROM games WHERE slug = 'chess'`,
+  );
+  if (chessLookup.rows[0]) {
+    await client.query(
+      `INSERT INTO "refereeCertifications" ("userId", "gameId", "certifiedByUserId", notes)
+       SELECT :adminId, :gameId, :adminId, 'self-cert (admin bootstrap)'
+       WHERE NOT EXISTS (
+         SELECT 1 FROM "refereeCertifications"
+         WHERE "userId" = :adminId AND "gameId" = :gameId AND "revokedAt" IS NULL
+       )`,
+      { adminId, gameId: chessLookup.rows[0].id },
+    );
+  }
+
+  // 4. A scheduled refereed match between Furat Najaf (side A) and Tigris
+  //    Mosul (side B). Sara is the assigned main, admin is an assistant —
+  //    both at status 'accepted' so the seeded data exercises the assignment
+  //    table without needing the full assign → accept → check-in flow.
+  //    Match status stays 'scheduled', matchMode='refereed'.
+  // Inserted only if it doesn't exist yet (idempotency via the guard select).
+  const existingRefMatch = await client.query<{ id: string }>(
+    `SELECT m.id FROM matches m
+     JOIN "matchParticipants" mpA ON mpA."matchId" = m.id AND mpA.side = 'A'
+     JOIN "matchParticipants" mpB ON mpB."matchId" = m.id AND mpB.side = 'B'
+     JOIN teams tA ON tA.id = mpA."teamId"
+     JOIN teams tB ON tB.id = mpB."teamId"
+     WHERE m."matchMode" = 'refereed'
+       AND m.status = 'scheduled'
+       AND tA.slug = 'furat-najaf' AND tB.slug = 'tigris-mosul'
+     LIMIT 1`,
+  );
+
+  if (!existingRefMatch.rows[0]) {
+    const furatId = await teamIdBySlug('furat-najaf');
+    const tigrisId = await teamIdBySlug('tigris-mosul');
+    const eloFurat = await client.query<{ elo: number; mmr: number; matchesPlayed: number }>(
+      `SELECT elo, mmr, "matchesPlayed" FROM "teamElos"
+       WHERE "teamId" = :id AND "seasonId" IS NULL`,
+      { id: furatId },
+    );
+    const eloTigris = await client.query<{ elo: number; mmr: number; matchesPlayed: number }>(
+      `SELECT elo, mmr, "matchesPlayed" FROM "teamElos"
+       WHERE "teamId" = :id AND "seasonId" IS NULL`,
+      { id: tigrisId },
+    );
+    const refMatch = await client.query<{ id: string }>(
+      `INSERT INTO matches (
+         "gameId", "formatId", "divisionId", "matchMode", stakes, status,
+         "scheduledAt", "creationSource"
+       )
+       VALUES (
+         :gameId, :formatId, :divisionId, 'refereed', 'ranked', 'scheduled',
+         CURRENT_TIMESTAMP + INTERVAL '2 hours', 'admin_created'
+       )
+       RETURNING id`,
+      { gameId: footballId, formatId: fb5v5, divisionId: fbMale },
+    );
+    const refMatchId = refMatch.rows[0].id;
+    await client.query(
+      `INSERT INTO "matchParticipants" (
+         "matchId", side, "teamId", "mmrAtMatch", "eloAtMatch", "matchesPlayedAtMatch"
+       )
+       VALUES (:matchId, 'A', :teamA, :mmrA, :eloA, :mpA),
+              (:matchId, 'B', :teamB, :mmrB, :eloB, :mpB)`,
+      {
+        matchId: refMatchId,
+        teamA: furatId,
+        mmrA: eloFurat.rows[0].mmr, eloA: eloFurat.rows[0].elo, mpA: eloFurat.rows[0].matchesPlayed,
+        teamB: tigrisId,
+        mmrB: eloTigris.rows[0].mmr, eloB: eloTigris.rows[0].elo, mpB: eloTigris.rows[0].matchesPlayed,
+      },
+    );
+    // Sara as main, admin as assistant. Both 'accepted'.
+    // NB: Tigris Mosul's captain is admin — so admin officiating this match is
+    // actually a real conflict-of-interest. We bypass at seed time because the
+    // service-level conflict check runs only at assignReferee, not on direct
+    // SQL inserts. This is intentional: the seeded data is for UI/screen
+    // shaping, not for exercising the conflict logic. Tests cover the
+    // conflict path against fresh fixtures.
+    await client.query(
+      `INSERT INTO "refereeAssignments" (
+         "matchId", "refereeUserId", role, status, "assignedByUserId", "respondedAt"
+       )
+       VALUES
+         (:matchId, :saraId,  'main',      'accepted', :adminId, CURRENT_TIMESTAMP),
+         (:matchId, :adminId, 'assistant', 'accepted', :adminId, CURRENT_TIMESTAMP)`,
+      { matchId: refMatchId, saraId: sara, adminId },
+    );
+  }
+
+  const refProfileCount = await client.query<{ count: string }>(
+    `SELECT COUNT(*) FROM "refereeProfiles"`,
+  );
+  const refCertCount = await client.query<{ count: string }>(
+    `SELECT COUNT(*) FROM "refereeCertifications" WHERE "revokedAt" IS NULL`,
+  );
+  const refAssignCount = await client.query<{ count: string }>(
+    `SELECT COUNT(*) FROM "refereeAssignments" WHERE status = 'accepted'`,
+  );
+  console.log(
+    `  ✓ ${refProfileCount.rows[0].count} referee profiles, ` +
+    `${refCertCount.rows[0].count} active certifications, ` +
+    `${refAssignCount.rows[0].count} accepted assignments`,
+  );
 }

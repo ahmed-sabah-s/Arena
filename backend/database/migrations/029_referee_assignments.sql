@@ -79,72 +79,15 @@ CREATE INDEX IF NOT EXISTS idx_referee_captain_flags_referee
 CREATE UNIQUE INDEX IF NOT EXISTS idx_referee_captain_flags_unique
   ON "refereeCaptainFlags"("matchId", "refereeUserId", "flaggedByUserId");
 
--- ─── Phase-6 platformConfig keys ────────────────────────────────────────────
+-- ─── Phase-6-specific platformConfig keys ──────────────────────────────────
+-- Most referee tunables (same-team limit, conflict window, offense window,
+-- offense penalties, check-in / promote minutes-before, payments-enabled flag,
+-- match fee) were already seeded by migration 004's platformConfig baseline.
+-- Phase 6 only adds the captain-flag review threshold + window, which the
+-- assignment service uses to decide when to notify admins about a piling-up
+-- referee. Existing keys are preserved as-is — no value drift across phases.
 
 INSERT INTO "platformConfig" (key, value, "valueType", category, description) VALUES
-  (
-    'referee_payments_enabled',
-    'false'::jsonb,
-    'boolean',
-    'monetization',
-    'Master flag for the referee payment / payout flow. Phase 6 leaves this off; the data model accommodates a payout amount on assignments but no UI surfaces it.'
-  ),
-  (
-    'referee_same_team_limit',
-    '3'::jsonb,
-    'integer',
-    'referees',
-    'Maximum number of completed matches a referee may officiate involving the same team within referee_conflict_window_days. Hitting the limit blocks further assignments to matches with that team until older matches roll out of the window.'
-  ),
-  (
-    'referee_conflict_window_days',
-    '30'::jsonb,
-    'integer',
-    'referees',
-    'Sliding-window length (days) for the same-team-frequency rule. Matches officiated outside this window do not count toward referee_same_team_limit.'
-  ),
-  (
-    'referee_offense_window_days',
-    '90'::jsonb,
-    'integer',
-    'referees',
-    'Sliding-window length (days) used to classify a no-show as first-offense (none in window) or repeat-offense (one or more in window) for reliability-penalty purposes.'
-  ),
-  (
-    'referee_first_offense_penalty',
-    '0.5'::jsonb,
-    'number',
-    'referees',
-    'Reliability score deducted on a referee no-show that is their first within referee_offense_window_days. Reliability is a 0.00-5.00 decimal so values like 0.5 are subtracted directly.'
-  ),
-  (
-    'referee_repeat_offense_penalty',
-    '1.0'::jsonb,
-    'number',
-    'referees',
-    'Reliability score deducted on a referee no-show that is a repeat within referee_offense_window_days.'
-  ),
-  (
-    'referee_reclaim_grace_minutes',
-    '5'::jsonb,
-    'integer',
-    'referees',
-    'Grace window after auto-promotion during which the original no-showing main referee can reclaim their slot, provided the match has not started yet. Reclaiming reverses the promotion but does NOT refund the reliability penalty.'
-  ),
-  (
-    'referee_check_in_window_minutes',
-    '30'::jsonb,
-    'integer',
-    'referees',
-    'Minutes before scheduledAt at which a check-in request is sent to all assigned referees. Phase 6 exposes this via an admin-callable trigger; Phase 8 wires it to a real cron.'
-  ),
-  (
-    'referee_auto_promote_minutes',
-    '15'::jsonb,
-    'integer',
-    'referees',
-    'Minutes before scheduledAt at which the auto-promotion sweep runs: if the main has not checked in but an assistant has, the assistant is promoted to main and the main is marked no_show.'
-  ),
   (
     'referee_flag_review_threshold',
     '3'::jsonb,
