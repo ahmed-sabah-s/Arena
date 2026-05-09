@@ -18,3 +18,5 @@ export * from './dispute.schemas';
 export * from './queue.schemas';
 export * from './match-invite.schemas';
 export * from './referee.schemas';
+export * from './venue.schemas';
+export * from './venue-booking.schemas';
