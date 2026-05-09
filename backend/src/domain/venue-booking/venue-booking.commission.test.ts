@@ -11,6 +11,8 @@ const IQD: Currency = {
   displayRoundingStep: 250,
   displayRoundingMode: 'ceil',
   isActive: true,
+  createdAt: new Date(),
+  updatedAt: new Date(),
 };
 
 const USD: Currency = {
@@ -22,6 +24,8 @@ const USD: Currency = {
   displayRoundingStep: 1,
   displayRoundingMode: 'ceil',
   isActive: false,
+  createdAt: new Date(),
+  updatedAt: new Date(),
 };
 
 describe('calculateCommission — IQD (step 250, ceil)', () => {

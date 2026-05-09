@@ -128,9 +128,9 @@ function makeRepos() {
   } as unknown as import('../notification/notification.service.js').NotificationService;
   const paymentProvider: PaymentProvider = {
     name: 'manual',
-    initiate: vi.fn(async () => ({ success: true, providerReference: 'manual-abc', status: 'pending' })),
-    checkStatus: vi.fn(async () => ({ success: true, status: 'pending' })),
-    markPaid: vi.fn(async () => ({ success: true, status: 'paid', providerReference: 'manual-abc' })),
+    initiate: vi.fn(async () => ({ success: true, providerReference: 'manual-abc', status: 'pending' as const })),
+    checkStatus: vi.fn(async () => ({ success: true, status: 'pending' as const })),
+    markPaid: vi.fn(async () => ({ success: true, status: 'paid' as const, providerReference: 'manual-abc' })),
   };
   return { bookingRepo, venueRepo, gameConfigRepo, availabilityRepo, notificationService, paymentProvider };
 }
