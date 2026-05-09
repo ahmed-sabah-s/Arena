@@ -600,4 +600,200 @@ export default async function seedDev(client: CustomClient): Promise<void> {
     `${refCertCount.rows[0].count} active certifications, ` +
     `${refAssignCount.rows[0].count} accepted assignments`,
   );
+
+  // ─── Phase 7: a venue owner, two venues, configs, schedule, two bookings ─
+  console.log('  Seeding dev venues, schedules, and bookings...');
+
+  // Karim Owner — dedicated venue_owner with no other roles. Cleaner conflict
+  // surface than re-using admin (who already wears two hats).
+  const karimPhone = '+9647500000006';
+  await client.query(
+    `INSERT INTO "user" (
+       phone, "fullName", gender, city, country,
+       "preferredLanguage", "preferredCurrency", "experienceLevel",
+       "phoneVerifiedAt", "onboardingCompletedAt"
+     )
+     VALUES (
+       :phone, 'Karim Owner', 'male', 'Baghdad', 'IQ',
+       'ar', 'IQD', 'intermediate',
+       CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+     )
+     ON CONFLICT (phone) DO NOTHING`,
+    { phone: karimPhone },
+  );
+  const karim = await userIdByPhone(karimPhone);
+
+  // Grant venue_owner role.
+  await client.query(
+    `INSERT INTO "userRole" ("userId", "roleId")
+     SELECT :userId, r.id FROM role r WHERE r.name = 'venue_owner'
+     ON CONFLICT DO NOTHING`,
+    { userId: karim },
+  );
+
+  // Two active venues.
+  await client.query(
+    `INSERT INTO venues (
+       "ownerUserId", name, "nameAr", city, country, "defaultCurrency",
+       status, "approvedAt", "approvedByUserId"
+     )
+     VALUES
+       (:karim, 'Stadium Asad', 'استاد الأسد', 'Baghdad', 'IQ', 'IQD',
+        'active', CURRENT_TIMESTAMP, :adminId),
+       (:karim, 'Hall Ali',     'قاعة علي',    'Karbala', 'IQ', 'IQD',
+        'active', CURRENT_TIMESTAMP, :adminId)
+     ON CONFLICT DO NOTHING`,
+    { karim, adminId },
+  );
+
+  async function venueIdByName(name: string): Promise<string> {
+    const r = await client.query<{ id: string }>(
+      `SELECT id FROM venues WHERE name = :name AND "ownerUserId" = :owner`,
+      { name, owner: karim },
+    );
+    return r.rows[0].id;
+  }
+
+  const stadiumAsadId = await venueIdByName('Stadium Asad');
+  const hallAliId = await venueIdByName('Hall Ali');
+  const chessId = await gameId('chess');
+
+  // Game configs.
+  await client.query(
+    `INSERT INTO "venueGameConfigs" (
+       "venueId", "gameId", "pricingModel", "priceAmount", "priceCurrency", capacity
+     )
+     VALUES
+       (:stadium, :football, 'hourly',     30000, 'IQD', 1),
+       (:hall,    :dominoes, 'per_session', 5000, 'IQD', 1),
+       (:hall,    :chess,    'per_session', 2000, 'IQD', 1)
+     ON CONFLICT ("venueId", "gameId") DO NOTHING`,
+    { stadium: stadiumAsadId, hall: hallAliId, football: footballId, dominoes: dominoesId, chess: chessId },
+  );
+
+  // Availability rules — pass time strings as params, never inline. The
+  // backend's named-parameter parser would otherwise interpret literal
+  // `:00` inside `'16:00:00'` as a missing parameter.
+  for (let dow = 0; dow < 7; dow += 1) {
+    await client.query(
+      `INSERT INTO "venueAvailabilityRules" ("venueId", "dayOfWeek", "openTime", "closeTime")
+       VALUES (:venueId, :dow, :openTime, :closeTime)`,
+      { venueId: stadiumAsadId, dow, openTime: '16:00:00', closeTime: '22:00:00' },
+    );
+  }
+  for (let dow = 0; dow < 7; dow += 1) {
+    await client.query(
+      `INSERT INTO "venueAvailabilityRules" ("venueId", "dayOfWeek", "openTime", "closeTime")
+       VALUES (:venueId, :dow, :openTime, :closeTime)`,
+      { venueId: hallAliId, dow, openTime: '18:00:00', closeTime: '23:00:00' },
+    );
+  }
+  await client.query(
+    `INSERT INTO "venueAvailabilityRules" ("venueId", "dayOfWeek", "openTime", "closeTime")
+     VALUES (:venueId, 6, :openTime, :closeTime)`,
+    { venueId: hallAliId, openTime: '14:00:00', closeTime: '17:00:00' },
+  );
+
+  // One requested booking — Stadium Asad, football, tomorrow 18:00 for 1 hour,
+  // by Asad Baghdad's captain (ahmed). Match-linked to a fresh scheduled match.
+  const requestedMatch = await client.query<{ id: string }>(
+    `INSERT INTO matches (
+       "gameId", "formatId", "divisionId", "matchMode", stakes, status,
+       "scheduledAt", "creationSource"
+     )
+     VALUES (
+       :gameId, :formatId, :divisionId, 'score_only', 'friendly', 'scheduled',
+       date_trunc('day', CURRENT_TIMESTAMP) + INTERVAL '1 day' + INTERVAL '18 hours',
+       'admin_created'
+     )
+     RETURNING id`,
+    { gameId: footballId, formatId: fb5v5, divisionId: fbMale },
+  );
+  const requestedMatchId = requestedMatch.rows[0].id;
+  await client.query(
+    `INSERT INTO "venueBookings" (
+       "venueId", "matchId", "gameId", "requestedByUserId",
+       "startsAt", "endsAt",
+       "priceAmount", "priceCurrency",
+       "commissionAmount", "commissionCurrency", "commissionPercentSnapshot",
+       status
+     )
+     VALUES (
+       :venueId, :matchId, :gameId, :ahmed,
+       date_trunc('day', CURRENT_TIMESTAMP) + INTERVAL '1 day' + INTERVAL '18 hours',
+       date_trunc('day', CURRENT_TIMESTAMP) + INTERVAL '1 day' + INTERVAL '19 hours',
+       30000, 'IQD',
+       2500, 'IQD', 8.0,
+       'requested'
+     )`,
+    { venueId: stadiumAsadId, matchId: requestedMatchId, gameId: footballId, ahmed },
+  );
+  await client.query(
+    `UPDATE matches SET "venueId" = :venueId WHERE id = :matchId`,
+    { venueId: stadiumAsadId, matchId: requestedMatchId },
+  );
+
+  // One confirmed booking — Hall Ali, dominoes, day after tomorrow 19:00, by lina.
+  // Backed by a fresh dominoes-mode scheduled match so the matchId link works.
+  const dom2v2Id = await formatId('dominoes', '2v2');
+  const domOpenId = await divisionId('dominoes', 'open');
+  const confirmedMatch = await client.query<{ id: string }>(
+    `INSERT INTO matches (
+       "gameId", "formatId", "divisionId", "matchMode", stakes, status,
+       "scheduledAt", "creationSource"
+     )
+     VALUES (
+       :gameId, :formatId, :divisionId, 'score_only', 'friendly', 'scheduled',
+       date_trunc('day', CURRENT_TIMESTAMP) + INTERVAL '2 days' + INTERVAL '19 hours',
+       'admin_created'
+     )
+     RETURNING id`,
+    { gameId: dominoesId, formatId: dom2v2Id, divisionId: domOpenId },
+  );
+  const confirmedMatchId = confirmedMatch.rows[0].id;
+  await client.query(
+    `INSERT INTO "venueBookings" (
+       "venueId", "matchId", "gameId", "requestedByUserId",
+       "startsAt", "endsAt",
+       "priceAmount", "priceCurrency",
+       "commissionAmount", "commissionCurrency", "commissionPercentSnapshot",
+       status, "confirmedAt", "paymentStatus", "paymentProvider", "paymentProviderReference"
+     )
+     VALUES (
+       :venueId, :matchId, :gameId, :lina,
+       date_trunc('day', CURRENT_TIMESTAMP) + INTERVAL '2 days' + INTERVAL '19 hours',
+       date_trunc('day', CURRENT_TIMESTAMP) + INTERVAL '2 days' + INTERVAL '21 hours',
+       5000, 'IQD',
+       500, 'IQD', 8.0,
+       'confirmed', CURRENT_TIMESTAMP,
+       'pending', 'manual', 'manual-seed-confirmed-1'
+     )`,
+    { venueId: hallAliId, matchId: confirmedMatchId, gameId: dominoesId, lina },
+  );
+  await client.query(
+    `UPDATE matches SET "venueId" = :venueId WHERE id = :matchId`,
+    { venueId: hallAliId, matchId: confirmedMatchId },
+  );
+
+  const venueCount = await client.query<{ count: string }>(
+    `SELECT COUNT(*) FROM venues WHERE status = 'active'`,
+  );
+  const configCount = await client.query<{ count: string }>(
+    `SELECT COUNT(*) FROM "venueGameConfigs"`,
+  );
+  const availCount = await client.query<{ count: string }>(
+    `SELECT COUNT(*) FROM "venueAvailabilityRules"`,
+  );
+  const reqCount = await client.query<{ count: string }>(
+    `SELECT COUNT(*) FROM "venueBookings" WHERE status = 'requested'`,
+  );
+  const confCount = await client.query<{ count: string }>(
+    `SELECT COUNT(*) FROM "venueBookings" WHERE status = 'confirmed'`,
+  );
+  console.log(
+    `  ✓ ${venueCount.rows[0].count} active venues, ` +
+    `${configCount.rows[0].count} game configs, ` +
+    `${availCount.rows[0].count} availability rules, ` +
+    `${reqCount.rows[0].count} requested + ${confCount.rows[0].count} confirmed bookings`,
+  );
 }
