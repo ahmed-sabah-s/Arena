@@ -9,6 +9,8 @@ import { notificationRouter } from "../../domain/notification";
 import { matchRouter } from "../../domain/match";
 import { queueRouter } from "../../domain/matchmaking";
 import { matchInviteRouter } from "../../domain/match-invite";
+import { refereeRouter } from "../../domain/referee";
+import { adminRouter } from "../../domain/admin";
 
 export const appRouter = router({
   auth: authRouter,
@@ -21,6 +23,8 @@ export const appRouter = router({
   match: matchRouter,
   queue: queueRouter,
   matchInvite: matchInviteRouter,
+  referee: refereeRouter,
+  admin: adminRouter,
 });
 
 export type AppRouter = typeof appRouter;
