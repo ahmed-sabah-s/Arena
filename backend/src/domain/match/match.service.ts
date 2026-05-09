@@ -1,7 +1,6 @@
 import { transaction, query } from '../../db.js';
 import type { CustomClient } from '../../db.js';
 import {
-  AppError,
   AuthorizationError,
   ConflictError,
   NotFoundError,
@@ -82,8 +81,14 @@ export class MatchService {
   async createMatchFromQueueEntries(
     input: CreateMatchFromQueueInput,
   ): Promise<{ match: Match }> {
+    // Refereed matches don't come from the queue. The queue defaults to
+    // score_only or player_stats based on game configuration; refereed
+    // matches are admin-scheduled or come through a refereed QR invite. If
+    // the matchmaker ever picks 'refereed', that's a bug, not a feature —
+    // surface it loudly so we don't silently create a refereed match with
+    // no assigned referee.
     if (input.matchMode === 'refereed') {
-      throw new AppError('NOT_IMPLEMENTED_UNTIL_PHASE_6', 501);
+      throw new ValidationError('REFEREED_QUEUE_NOT_SUPPORTED');
     }
     return await transaction(async (client) => {
       // Lock both queue entries
@@ -194,9 +199,9 @@ export class MatchService {
     input: CreateMatchFromInviteInput,
     client?: CustomClient,
   ): Promise<{ match: Match }> {
-    if (input.matchMode === 'refereed') {
-      throw new AppError('NOT_IMPLEMENTED_UNTIL_PHASE_6', 501);
-    }
+    // Refereed-mode flows through normally — match is created at status
+    // 'scheduled', and an admin must assign a referee before
+    // RefereeAssignmentService.startMatch can flip it to 'active'.
     if (client) {
       return this.runCreateMatchFromInvite(input, client);
     }
@@ -370,7 +375,11 @@ export class MatchService {
       const match = await this.matchRepo.findByIdForUpdate(input.matchId, client);
       if (!match) throw new NotFoundError('Match');
       if (match.matchMode === 'refereed') {
-        throw new AppError('NOT_IMPLEMENTED_UNTIL_PHASE_6', 501);
+        // Captains don't submit results for refereed matches — the active
+        // main referee owns the result. Phase 6 surfaces a clearer error
+        // pointing them at the right route. The actual submission goes
+        // through referee.submitResult / RefereeAssignmentService.submitRefereedResult.
+        throw new ConflictError('REFEREE_SUBMISSION_REQUIRED');
       }
       if (match.status !== 'active' && match.status !== 'awaiting_confirmation') {
         throw new ConflictError('MATCH_NOT_SUBMITTABLE');

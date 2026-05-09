@@ -101,7 +101,7 @@ export class RefereeAssignmentService {
     if (!certified) throw new ConflictError('REFEREE_NOT_CERTIFIED_FOR_GAME');
 
     const participants = await this.deps.participantRepo.findByMatchId(matchId);
-    if (await this.deps.conflictService.hasConflictForMatch(refereeUserId, match, participants)) {
+    if (await this.deps.conflictService.hasConflictForMatch(refereeUserId, participants)) {
       throw new ConflictError('REFEREE_HAS_CONFLICT_OF_INTEREST');
     }
 

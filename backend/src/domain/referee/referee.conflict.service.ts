@@ -7,7 +7,7 @@ import {
 } from '../../shared/errors/index.js';
 import type { RefereeConflict } from './referee.entity.js';
 import type { IRefereeConflictRepository } from './referee.interface.js';
-import type { Match, MatchParticipant } from '../match/match.entity.js';
+import type { MatchParticipant } from '../match/match.entity.js';
 
 /**
  * Conflict-of-interest declarations: a referee can declare they shouldn't be
@@ -80,11 +80,11 @@ export class RefereeConflictService {
   /**
    * Evaluate whether the referee has a disqualifying interest in this match.
    * Returns true on either an explicit conflict OR the implicit "active team
-   * member of a participating team" rule.
+   * member of a participating team" rule. Caller passes already-fetched
+   * participants so we don't re-query for them.
    */
   async hasConflictForMatch(
     refereeUserId: string,
-    match: Pick<Match, 'id'>,
     participants: MatchParticipant[],
   ): Promise<boolean> {
     const teamIds = participants.map((p) => p.teamId).filter((x): x is string => Boolean(x));

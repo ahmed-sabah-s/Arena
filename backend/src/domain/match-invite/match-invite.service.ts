@@ -68,9 +68,6 @@ export class MatchInviteService {
   ) {}
 
   async createInvite(input: CreateInviteInput, byUserId: string): Promise<MatchInvite> {
-    if (input.matchMode === 'refereed') {
-      throw new AppError('NOT_IMPLEMENTED_UNTIL_PHASE_6', 501);
-    }
     const game = await this.fetchGame(input.gameId);
     if (!game) throw new NotFoundError('Game');
     if (!game.isActive) throw new ValidationError('GAME_INACTIVE');
@@ -198,17 +195,18 @@ export class MatchInviteService {
 
       const updated = await this.repo.setClaimed(invite.id, byUserId, claimedByTeamId, client);
 
-      if (invite.stakes === 'friendly') {
-        // Friendly invites lock immediately on claim — match + creator-confirmed
-        // stamp + notifications all in this transaction. Ranked stakes still
-        // require an explicit confirmClaim call from the creator.
+      // Friendly score_only / player_stats invites lock immediately on claim
+      // (Phase 5.5). Refereed-mode invites always require creator confirmation
+      // even when stakes is friendly — referees are a commitment and both
+      // sides should agree explicitly.
+      if (invite.stakes === 'friendly' && invite.matchMode !== 'refereed') {
         const { match, refreshedInvite } = await this.lockFriendlyMatch(
           updated, byUserId, claimedByTeamId, client,
         );
         return { status: 'completed' as const, match, invite: refreshedInvite };
       }
 
-      // Ranked invites: creator must confirm
+      // Ranked invites + refereed friendlies: creator must confirm.
       return { status: 'awaiting_creator_confirmation' as const, invite: updated };
     });
   }
