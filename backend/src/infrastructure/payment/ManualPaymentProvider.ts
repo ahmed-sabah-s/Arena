@@ -18,7 +18,7 @@ import type {
 export class ManualPaymentProvider implements PaymentProvider {
   readonly name = 'manual';
 
-  async initiate(req: PaymentRequest): Promise<PaymentResult> {
+  async initiate(_req: PaymentRequest): Promise<PaymentResult> {
     return {
       success: true,
       providerReference: `manual-${randomUUID()}`,

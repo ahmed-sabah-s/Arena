@@ -10,6 +10,8 @@ import { matchRouter } from "../../domain/match";
 import { queueRouter } from "../../domain/matchmaking";
 import { matchInviteRouter } from "../../domain/match-invite";
 import { refereeRouter } from "../../domain/referee";
+import { venueRouter } from "../../domain/venue";
+import { venueBookingRouter } from "../../domain/venue-booking";
 import { adminRouter } from "../../domain/admin";
 
 export const appRouter = router({
@@ -24,6 +26,8 @@ export const appRouter = router({
   queue: queueRouter,
   matchInvite: matchInviteRouter,
   referee: refereeRouter,
+  venue: venueRouter,
+  venueBooking: venueBookingRouter,
   admin: adminRouter,
 });
 
