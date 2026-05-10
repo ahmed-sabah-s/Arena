@@ -462,4 +462,64 @@ export class DisputeRepository implements IDisputeRepository {
     );
     return row ?? null;
   }
+
+  async findByIdForUpdate(id: string, client: CustomClient): Promise<Dispute | null> {
+    const res = await client.query<Dispute>(
+      `SELECT * FROM disputes WHERE id = :id FOR UPDATE`,
+      { id },
+    );
+    return res.rows[0] ?? null;
+  }
+
+  async listOpen(limit: number): Promise<Dispute[]> {
+    return query<Dispute>(
+      `SELECT * FROM disputes
+       WHERE status = 'open'
+       ORDER BY "createdAt" ASC
+       LIMIT :limit`,
+      { limit },
+    );
+  }
+
+  async setResolved(
+    id: string,
+    resolution: string,
+    resolutionNotes: string | null,
+    resolvedByUserId: string,
+    client: CustomClient,
+  ): Promise<Dispute> {
+    const res = await client.query<Dispute>(
+      `UPDATE disputes
+       SET status = 'resolved',
+           resolution = :resolution,
+           "resolutionNotes" = :resolutionNotes,
+           "resolvedByUserId" = :resolvedByUserId,
+           "resolvedAt" = CURRENT_TIMESTAMP
+       WHERE id = :id AND status = 'open'
+       RETURNING *`,
+      { id, resolution, resolutionNotes, resolvedByUserId },
+    );
+    if (!res.rows[0]) throw new NotFoundError('Dispute');
+    return res.rows[0];
+  }
+
+  async setDismissed(
+    id: string,
+    resolutionNotes: string,
+    resolvedByUserId: string,
+    client: CustomClient,
+  ): Promise<Dispute> {
+    const res = await client.query<Dispute>(
+      `UPDATE disputes
+       SET status = 'dismissed',
+           "resolutionNotes" = :resolutionNotes,
+           "resolvedByUserId" = :resolvedByUserId,
+           "resolvedAt" = CURRENT_TIMESTAMP
+       WHERE id = :id AND status = 'open'
+       RETURNING *`,
+      { id, resolutionNotes, resolvedByUserId },
+    );
+    if (!res.rows[0]) throw new NotFoundError('Dispute');
+    return res.rows[0];
+  }
 }

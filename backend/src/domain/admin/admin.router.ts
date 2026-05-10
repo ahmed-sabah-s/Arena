@@ -3,6 +3,8 @@ import { adminRefereeRouter } from '../referee/referee.router.js';
 import { adminVenueRouter } from '../venue/venue.router.js';
 import { adminVenueBookingRouter } from '../venue-booking/venue-booking.router.js';
 import { adminSchedulerRouter } from '../scheduler/scheduler.router.js';
+import { adminUserReportRouter } from '../user-report/user-report.router.js';
+import { adminDisputeRouter } from '../dispute/dispute.router.js';
 
 /**
  * Admin namespace. Phase 6 added referee-admin; Phase 7 added venue +
@@ -16,4 +18,6 @@ export const adminRouter = router({
   venue: adminVenueRouter,
   venueBooking: adminVenueBookingRouter,
   scheduler: adminSchedulerRouter,
+  userReport: adminUserReportRouter,
+  dispute: adminDisputeRouter,
 });

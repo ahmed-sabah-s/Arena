@@ -12,6 +12,7 @@ import { matchInviteRouter } from "../../domain/match-invite";
 import { refereeRouter } from "../../domain/referee";
 import { venueRouter } from "../../domain/venue";
 import { venueBookingRouter } from "../../domain/venue-booking";
+import { userReportRouter } from "../../domain/user-report";
 import { adminRouter } from "../../domain/admin";
 
 export const appRouter = router({
@@ -28,6 +29,7 @@ export const appRouter = router({
   referee: refereeRouter,
   venue: venueRouter,
   venueBooking: venueBookingRouter,
+  userReport: userReportRouter,
   admin: adminRouter,
 });
 

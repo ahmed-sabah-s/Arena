@@ -149,4 +149,20 @@ export interface IDisputeRepository {
   create(input: CreateDisputeData, client: CustomClient): Promise<Dispute>;
   findOpenForMatch(matchId: string): Promise<Dispute | null>;
   findById(id: string): Promise<Dispute | null>;
+  // Phase 8 resolution flow.
+  findByIdForUpdate(id: string, client: CustomClient): Promise<Dispute | null>;
+  listOpen(limit: number): Promise<Dispute[]>;
+  setResolved(
+    id: string,
+    resolution: string,
+    resolutionNotes: string | null,
+    resolvedByUserId: string,
+    client: CustomClient,
+  ): Promise<Dispute>;
+  setDismissed(
+    id: string,
+    resolutionNotes: string,
+    resolvedByUserId: string,
+    client: CustomClient,
+  ): Promise<Dispute>;
 }
