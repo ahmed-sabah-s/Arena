@@ -8,6 +8,7 @@ vi.mock('../../shared/config/platformConfig/index.js', () => ({
     if (key === 'referee_offense_window_days') return 90;
     if (key === 'referee_flag_review_threshold') return 3;
     if (key === 'referee_flag_window_days') return 30;
+    if (key === 'referee_reclaim_grace_minutes') return 5;
     return 0;
   }),
   getConfigNumber: vi.fn(async (key: string) => {
@@ -422,6 +423,8 @@ describe('RefereeAssignmentService.reclaimMainSlot', () => {
       makeAssignment({
         id: 'ra-asst-1', refereeUserId: ASSISTANT_ID, role: 'main',
         status: 'checked_in', promotedFromAssignmentId: 'ra-main',
+        // Promoted just now → still well within the 5-min grace window.
+        promotedAt: new Date(),
       }),
     );
     const svc = new RefereeAssignmentService(deps);
@@ -429,6 +432,27 @@ describe('RefereeAssignmentService.reclaimMainSlot', () => {
     expect(deps.assignmentRepo.demoteToAssistant).toHaveBeenCalledWith(
       'ra-asst-1', expect.anything(),
     );
+  });
+
+  it('rejects when reclaim window has expired', async () => {
+    const deps = makeDeps();
+    const txClient = { query: vi.fn(async () => ({ rows: [] })) };
+    vi.mocked(transaction).mockImplementationOnce(async (cb) => cb(txClient as unknown as Parameters<typeof cb>[0]));
+    vi.mocked(deps.assignmentRepo.findByIdForUpdate).mockResolvedValue(
+      makeAssignment({ id: 'ra-main', refereeUserId: REF_ID, status: 'no_show', role: 'main' }),
+    );
+    vi.mocked(deps.matchRepo.findByIdForUpdate).mockResolvedValue(makeMatch());
+    vi.mocked(deps.assignmentRepo.findActiveMainByMatch).mockResolvedValue(
+      makeAssignment({
+        id: 'ra-asst-1', refereeUserId: ASSISTANT_ID, role: 'main',
+        status: 'checked_in', promotedFromAssignmentId: 'ra-main',
+        // Promoted 10 minutes ago → past the 5-min reclaim grace window.
+        promotedAt: new Date(Date.now() - 10 * 60_000),
+      }),
+    );
+    const svc = new RefereeAssignmentService(deps);
+    await expect(svc.reclaimMainSlot('ra-main', REF_ID))
+      .rejects.toMatchObject({ message: expect.stringContaining('RECLAIM_WINDOW_EXPIRED') });
   });
 
   it('rejects when match has already started', async () => {

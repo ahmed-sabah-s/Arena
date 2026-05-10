@@ -8,6 +8,7 @@ import { createContext } from "./presentation/context";
 import { appRouter } from "./presentation/routers/_app";
 import { config } from "./shared/config";
 import { logEnabledServices } from "./shared/config/optional-services";
+import { startScheduler, stopScheduler } from "./domain/scheduler";
 
 const app = express();
 
@@ -78,6 +79,15 @@ async function startServer() {
       () => refreshTokenRepo.deleteExpired().catch(console.error),
       24 * 60 * 60 * 1000
     );
+
+    // Phase 8 in-process cron scheduler. Reads SCHEDULER_ENABLED so tests
+    // can opt out. The startup logs each registered job and its expression.
+    const scheduler = await startScheduler();
+    if (scheduler.started) {
+      console.log(`✅ Scheduler started with ${scheduler.jobs} job(s)`);
+    } else {
+      console.log("ℹ️  Scheduler disabled (SCHEDULER_ENABLED=false)");
+    }
   } catch (error) {
     console.error("❌ Failed to start server:", error);
     process.exit(1);
@@ -87,6 +97,7 @@ async function startServer() {
 // Graceful shutdown
 const shutdown = async () => {
   console.log("\n🛑 Shutting down gracefully...");
+  stopScheduler();
   await closePool();
   process.exit(0);
 };

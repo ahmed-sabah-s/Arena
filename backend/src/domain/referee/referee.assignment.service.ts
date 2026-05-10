@@ -338,6 +338,20 @@ export class RefereeAssignmentService {
         throw new ConflictError('CURRENT_MAIN_WAS_NOT_PROMOTED_FROM_RECLAIMER');
       }
 
+      // Phase 8: time-gate the reclaim window inline (Phase 6 had deferred
+      // this to a sweep job; the cleaner answer is at-call-time). The
+      // window is measured from when the auto-promotion swap happened —
+      // i.e., the current main's promotedAt. Past the grace, reclaim is
+      // refused; the no-show stands.
+      const graceMinutes = await getConfigInteger('referee_reclaim_grace_minutes');
+      if (!currentMain.promotedAt) {
+        throw new ConflictError('NO_PROMOTION_TIMESTAMP');
+      }
+      const expiresAt = new Date(currentMain.promotedAt.getTime() + graceMinutes * 60_000);
+      if (Date.now() > expiresAt.getTime()) {
+        throw new ConflictError('RECLAIM_WINDOW_EXPIRED');
+      }
+
       // Step 1: demote current main first. Same partial-unique dance.
       await this.deps.assignmentRepo.demoteToAssistant(currentMain.id, client);
       await this.deps.assignmentRepo.updateStatus(currentMain.id, 'checked_in', client);
