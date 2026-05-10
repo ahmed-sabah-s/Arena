@@ -44,6 +44,23 @@ const result = await transaction(async (client) => {
 - Always destructure a single row: `query()` returns `T[]`.
 - `transaction()` runs queries inside `client` with automatic COMMIT on success or ROLLBACK on error.
 
+⚠️ **Time-like literals in SQL.** The named-parameter regex matches `:name` patterns. Time literals like `'14:00:00'` will cause `:00:00` to be parsed as a missing parameter. Always pass times via parameters, never inline. Same applies to any literal containing `:WORD` patterns. If you must inline (rare), use the parser-safe form: `make_time(14, 0, 0)`.
+
+```typescript
+// ✅ correct
+await query(
+  `INSERT INTO "venueAvailabilityRules" ("venueId", "dayOfWeek", "openTime", "closeTime")
+   VALUES (:venueId, :dow, :openTime, :closeTime)`,
+  { venueId, dow, openTime: '16:00:00', closeTime: '22:00:00' },
+);
+
+// ❌ wrong — :00:00 inside the literal is misread as a parameter
+await query(
+  `INSERT INTO ... VALUES (:venueId, :dow, '16:00:00', '22:00:00')`,
+  { venueId, dow },
+);
+```
+
 ## JSONB Parameter Binding
 
 **Always wrap JSONB values with `JSON.stringify(...)` before passing them to `query()` / `client.query()`.** The pg driver does not serialise JS objects or arrays into JSONB on its own — it stringifies them as `[object Object]` (objects) or comma-joins (arrays) and Postgres rejects the value or stores garbage.
@@ -72,6 +89,20 @@ await query(`... VALUES (:userId, :type, :payload)`, {
 - For columns whose shape varies, type the field as a discriminated union (see TypeScript Discipline below) rather than `any`.
 
 Existing examples in the codebase: [match.repository.ts](backend/src/domain/match/match.repository.ts) (`statValue`), [notification.repository.ts](backend/src/domain/notification/notification.repository.ts) (`payload`), [audit.repository.ts](backend/src/domain/audit/audit.repository.ts) (`details`), [elo.repository.ts](backend/src/domain/elo/elo.repository.ts) (`form`).
+
+## BIGINT and DECIMAL columns from pg
+
+The `pg` driver returns BIGINT and DECIMAL columns as JS strings, not numbers. Repositories that read money or large-integer columns must coerce on read. Pattern:
+
+```ts
+priceAmount: Number(row.priceAmount),
+commissionPercent: Number(row.commissionPercentSnapshot),
+reliabilityScore: Number(row.reliabilityScore),
+```
+
+Coercion belongs in the repository's row-to-entity mapping function, not in callers. If a third repository in a new domain needs the same pattern, extract a `coerceNumeric` helper to `backend/src/shared/numeric/`.
+
+Existing examples: [venue-booking.repository.ts](backend/src/domain/venue-booking/venue-booking.repository.ts) (`normaliseBooking`), [venue.repository.ts](backend/src/domain/venue/venue.repository.ts) (`normaliseVenueGameConfig`), [referee.repository.ts](backend/src/domain/referee/referee.repository.ts) (`normaliseProfile`).
 
 ## SQL Conventions
 
