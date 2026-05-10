@@ -105,3 +105,11 @@ export const GetVenueBookingsInputSchema = z.object({
   status: VenueBookingStatusSchema.optional(),
 });
 export type GetVenueBookingsInput = z.infer<typeof GetVenueBookingsInputSchema>;
+
+// ─── Phase 8: admin refund flow ────────────────────────────────────────────
+
+export const RefundBookingInputSchema = z.object({
+  bookingId: z.string().uuid(),
+  reason: z.string().min(1).max(2000),
+});
+export type RefundBookingInput = z.infer<typeof RefundBookingInputSchema>;

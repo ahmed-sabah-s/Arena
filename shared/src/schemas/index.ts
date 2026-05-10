@@ -20,3 +20,5 @@ export * from './match-invite.schemas';
 export * from './referee.schemas';
 export * from './venue.schemas';
 export * from './venue-booking.schemas';
+export * from './user-report.schemas';
+export * from './scheduler.schemas';

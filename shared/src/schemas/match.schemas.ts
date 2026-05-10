@@ -157,3 +157,19 @@ export const GetMatchInputSchema = z.object({
   matchId: z.string().uuid(),
 });
 export type GetMatchInput = z.infer<typeof GetMatchInputSchema>;
+
+// ─── Phase 8: admin overrides ──────────────────────────────────────────────
+
+export const AdminCancelMatchInputSchema = z.object({
+  matchId: z.string().uuid(),
+  reason: z.string().min(1).max(2000),
+});
+export type AdminCancelMatchInput = z.infer<typeof AdminCancelMatchInputSchema>;
+
+export const AdminOverrideMatchResultInputSchema = z.object({
+  matchId: z.string().uuid(),
+  scoreA: z.number().int().nonnegative(),
+  scoreB: z.number().int().nonnegative(),
+  reason: z.string().min(1).max(2000),
+});
+export type AdminOverrideMatchResultInput = z.infer<typeof AdminOverrideMatchResultInputSchema>;
