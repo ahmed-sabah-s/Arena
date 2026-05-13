@@ -559,6 +559,7 @@ export class MatchService {
         matchRepo: this.matchRepo,
         teamEloRepo: this.teamEloRepo,
         playerEloRepo: this.playerEloRepo,
+        participantRepo: this.participantRepo,
       },
     );
 

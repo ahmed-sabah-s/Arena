@@ -324,6 +324,49 @@ export class VenueBookingService {
     });
   }
 
+  /**
+   * Phase 8 admin refund flow. Marks a paid booking refunded; the actual
+   * money movement happens out-of-band (admin processes the refund via
+   * bank transfer / cash and then calls this). Refund reason lives in the
+   * audit log only — no DB column for it. Notifies both the requester and
+   * the venue owner. Idempotent: a second call on an already-refunded
+   * booking is a no-op return.
+   */
+  async refundBooking(
+    bookingId: string,
+    reason: string,
+    byAdminUserId: string,
+  ): Promise<VenueBooking> {
+    if (!(await this.isAdmin(byAdminUserId))) {
+      throw new AuthorizationError('NOT_ADMIN');
+    }
+    return await transaction(async (client) => {
+      const booking = await this.bookingRepo.findByIdForUpdate(bookingId, client);
+      if (!booking) throw new NotFoundError('VenueBooking');
+      if (booking.paymentStatus === 'refunded') return booking;
+      if (booking.paymentStatus !== 'paid') {
+        throw new ConflictError(`BOOKING_NOT_REFUNDABLE_FROM_${booking.paymentStatus.toUpperCase()}`);
+      }
+
+      const updated = await this.bookingRepo.setPaymentStatus(bookingId, 'refunded', client);
+      const venue = await this.venueRepo.findById(booking.venueId, client);
+
+      await this.notificationService.enqueue({
+        userId: booking.requestedByUserId,
+        type: 'venue_booking_refunded',
+        payload: { bookingId, reason },
+      }, client);
+      if (venue) {
+        await this.notificationService.enqueue({
+          userId: venue.ownerUserId,
+          type: 'venue_booking_refunded',
+          payload: { bookingId, reason },
+        }, client);
+      }
+      return updated;
+    });
+  }
+
   // ─── reads ────────────────────────────────────────────────────────────────
 
   async getById(bookingId: string, byUserId: string): Promise<VenueBooking> {

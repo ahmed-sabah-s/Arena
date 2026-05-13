@@ -9,5 +9,17 @@
     "build": "pnpm --filter ./backend build && pnpm --filter ./frontend build",
     "typecheck": "pnpm --filter \"...\" typecheck",
     "test": "pnpm --filter \"...\" test"
+  },
+  "pnpm": {
+    "overrides": {
+      "nodemailer@<7.0.7": ">=7.0.7",
+      "nodemailer@<=7.0.10": ">=7.0.11",
+      "nodemailer@<8.0.4": ">=8.0.4",
+      "nodemailer@<=8.0.4": ">=8.0.5",
+      "postcss@<8.5.10": ">=8.5.10",
+      "fast-xml-builder@<=1.1.6": ">=1.1.7",
+      "fast-xml-builder@=1.1.5": ">=1.1.6",
+      "fast-xml-parser@<5.7.0": ">=5.7.0"
+    }
   }
 }

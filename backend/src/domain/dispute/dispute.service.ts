@@ -219,6 +219,7 @@ export class DisputeService {
         matchRepo: this.deps.matchRepo,
         teamEloRepo: this.deps.teamEloRepo,
         playerEloRepo: this.deps.playerEloRepo,
+        participantRepo: this.deps.participantRepo,
       },
     );
     return this.deps.matchRepo.setCompleted(match.id, scoreA, scoreB, client);

@@ -82,6 +82,17 @@ export interface IMatchParticipantRepository {
     statKeeperUserId: string,
     client: CustomClient,
   ): Promise<MatchParticipant>;
+  // Phase 8: snapshot the post-resolution ELO state on a participant so admin
+  // overrides can reverse THIS match's contribution from the team/player
+  // ELO row without trampling subsequent matches.
+  setPostState(
+    matchId: string,
+    side: MatchSide,
+    mmrAfterMatch: number,
+    eloAfterMatch: number,
+    matchesPlayedAfterMatch: number,
+    client: CustomClient,
+  ): Promise<MatchParticipant>;
 }
 
 // ─── Match Submissions ────────────────────────────────────────────────────────

@@ -437,6 +437,7 @@ export class RefereeAssignmentService {
           matchRepo: this.deps.matchRepo,
           teamEloRepo: this.deps.teamEloRepo,
           playerEloRepo: this.deps.playerEloRepo,
+          participantRepo: this.deps.participantRepo,
         },
       );
       await this.deps.matchRepo.setCompleted(match.id, input.scoreA, input.scoreB, client);

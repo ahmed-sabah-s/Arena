@@ -309,6 +309,28 @@ export class MatchParticipantRepository implements IMatchParticipantRepository {
     if (!rows[0]) throw new NotFoundError('MatchParticipant');
     return rows[0];
   }
+
+  async setPostState(
+    matchId: string,
+    side: MatchSide,
+    mmrAfterMatch: number,
+    eloAfterMatch: number,
+    matchesPlayedAfterMatch: number,
+    client: CustomClient,
+  ): Promise<MatchParticipant> {
+    const rows = await exec<MatchParticipant>(
+      client,
+      `UPDATE "matchParticipants"
+       SET "mmrAfterMatch" = :mmrAfterMatch,
+           "eloAfterMatch" = :eloAfterMatch,
+           "matchesPlayedAfterMatch" = :matchesPlayedAfterMatch
+       WHERE "matchId" = :matchId AND side = :side
+       RETURNING *`,
+      { matchId, side, mmrAfterMatch, eloAfterMatch, matchesPlayedAfterMatch },
+    );
+    if (!rows[0]) throw new NotFoundError('MatchParticipant');
+    return rows[0];
+  }
 }
 
 // ─── Match Submissions ───────────────────────────────────────────────────────

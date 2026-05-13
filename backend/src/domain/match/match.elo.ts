@@ -27,7 +27,7 @@ import type {
 } from '../../shared/elo/index.js';
 import { getConfigInteger, getConfigNumber } from '../../shared/config/platformConfig/index.js';
 import type { Match, MatchParticipant } from './match.entity.js';
-import type { IMatchRepository } from './match.interface.js';
+import type { IMatchRepository, IMatchParticipantRepository } from './match.interface.js';
 import type {
   ITeamEloRepository,
   IPlayerEloRepository,
@@ -58,6 +58,11 @@ export interface ResolveMatchEloDeps {
   matchRepo: IMatchRepository;
   teamEloRepo: ITeamEloRepository;
   playerEloRepo: IPlayerEloRepository;
+  // Phase 8: optional so old callers stay compatible. When supplied, the
+  // resolution path snapshots post-resolution ELO/MMR/matchesPlayed onto
+  // the matchParticipants row — admin override needs this to reverse
+  // THIS match's contribution without affecting subsequent matches.
+  participantRepo?: IMatchParticipantRepository;
 }
 
 function determineResult(
@@ -246,6 +251,20 @@ export async function applyMatchEloAndStats(
       newMmr: p.mmrAtMatch,
       cooldownMultiplier: 1,
     });
+    // Phase 8: snapshot the post-state on participants. For friendly the
+    // delta is zero, but the after-state being non-null is what
+    // differentiates post-Phase-8 rows from older rows that the admin
+    // override flow can't safely reverse.
+    if (deps.participantRepo) {
+      await deps.participantRepo.setPostState(
+        match.id, sideA.side, sideA.mmrAtMatch, sideA.eloAtMatch,
+        sideA.matchesPlayedAtMatch + 1, client,
+      );
+      await deps.participantRepo.setPostState(
+        match.id, sideB.side, sideB.mmrAtMatch, sideB.eloAtMatch,
+        sideB.matchesPlayedAtMatch + 1, client,
+      );
+    }
     return {
       matchId: match.id,
       finalScoreA,
@@ -321,6 +340,21 @@ export async function applyMatchEloAndStats(
     teamEloRepo: deps.teamEloRepo, playerEloRepo: deps.playerEloRepo,
     calibrationMatchCount,
   });
+
+  // Phase 8: snapshot post-resolution ELO/MMR/matchesPlayed onto the
+  // participants so admin override can reverse this match's contribution
+  // independently of subsequent matches' contributions to the same ELO
+  // row. Optional dep keeps the older callers working without a refactor.
+  if (deps.participantRepo) {
+    await deps.participantRepo.setPostState(
+      match.id, sideA.side, sideAOut.newMmr, sideAOut.newElo,
+      sideA.matchesPlayedAtMatch + 1, client,
+    );
+    await deps.participantRepo.setPostState(
+      match.id, sideB.side, sideBOut.newMmr, sideBOut.newElo,
+      sideB.matchesPlayedAtMatch + 1, client,
+    );
+  }
 
   return {
     matchId: match.id,

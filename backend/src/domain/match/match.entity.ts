@@ -44,6 +44,11 @@ export interface MatchParticipant {
   mmrAtMatch: number;
   eloAtMatch: number;
   matchesPlayedAtMatch: number;
+  // Phase 8: post-resolution snapshot, populated by applyMatchEloAndStats.
+  // Null on rows that resolved before migration 037 was applied.
+  mmrAfterMatch: number | null;
+  eloAfterMatch: number | null;
+  matchesPlayedAfterMatch: number | null;
 }
 
 export interface MatchSubmission {
